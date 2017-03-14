@@ -1,6 +1,15 @@
-hash: ed39dd7a7e9f30c803696eea0ce96e341ea5eee1d4badeeafcfd01153d54cd57
-updated: 2017-03-14T20:45:40.625062576+01:00
+hash: 09e0df7437fddedbc95c38d85d79b0d1a8ed7df5f97fc17ca5e4ecac983bcddc
+updated: 2017-03-14T22:02:10.488406752+01:00
 imports:
-- name: github.com/eawsy/aws-lambda-go-core
-  version: e26eed6aa244a3d45aa693816a9c5faf39390fcd
+- name: go.uber.org/atomic
+  version: 3b8db5e93c4c02efbc313e17b2e796b0914a01fb
+- name: go.uber.org/zap
+  version: 4e517d38b2138e59475d6468e7a6b626eecdaa66
+  subpackages:
+  - buffer
+  - internal/bufferpool
+  - internal/color
+  - internal/exit
+  - internal/multierror
+  - zapcore
 testImports: []

@@ -12,18 +12,20 @@ function print_help {
 }
 
 function run_build { #compile handler
+	echo "--> building..."
 	docker run --rm                                                             \
 		-e HANDLER=handler                                                      	\
 		-e PACKAGE=handler                                                      	\
 		-v $GOPATH:/go                                                           	\
 		-v $(pwd):/tmp                                                          	\
 		-w /go/src/github.com/microfactory/line                                   \
-		eawsy/aws-lambda-go-shim:latest make all
-	rm handler.so
+		eawsy/aws-lambda-go-shim:latest bash -c "go build -v -buildmode=plugin -ldflags='-w -s' -o handler.so; pack handler handler.so handler.zip"
 }
 
 function run_deploy { #deploys the infra
   export $(cat secrets.env)
+	run_build
+	echo "--> deploying..."
   terraform apply \
 		-var project=line \
 		-var owner=$(git config user.name) \
@@ -33,6 +35,7 @@ function run_deploy { #deploys the infra
 
 function run_destroy { #destroy the infra
   export $(cat secrets.env)
+	echo "--> destroying..."
   terraform destroy \
 		-var project=line \
 		-var owner=$(git config user.name) \

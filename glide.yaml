@@ -1,5 +1,5 @@
 
-package: github.com/advanderveer/line
+package: github.com/microfactory/line
 import:
-- package: github.com/eawsy/aws-lambda-go-core          #AWS Lambda handling
-  version: e26eed6aa244a3d45aa693816a9c5faf39390fcd
+- package: go.uber.org/zap                      #fast structured logging
+  version: v1.0.0-rc.3
