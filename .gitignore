@@ -22,3 +22,7 @@ _testmain.go
 *.exe
 *.test
 *.prof
+handler.zip
+secrets.env
+*.tfstate
+*.tfstate.backup

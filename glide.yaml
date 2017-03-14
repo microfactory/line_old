@@ -1,0 +1,5 @@
+
+package: github.com/advanderveer/line
+import:
+- package: github.com/eawsy/aws-lambda-go-core          #AWS Lambda handling
+  version: e26eed6aa244a3d45aa693816a9c5faf39390fcd
