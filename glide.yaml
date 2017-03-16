@@ -2,4 +2,6 @@
 package: github.com/microfactory/line
 import:
 - package: go.uber.org/zap                      #fast structured logging
-  version: v1.0.0-rc.3
+  version: ^1.0.0
+- package: github.com/aws/aws-sdk-go            #official aws sdk
+  version: ^v1.7.9

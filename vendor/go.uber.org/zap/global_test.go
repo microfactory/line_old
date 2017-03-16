@@ -26,9 +26,9 @@ import (
 	"testing"
 	"time"
 
-	"go.uber.org/zap/internal/observer"
-	"go.uber.org/zap/testutils"
 	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest"
+	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -87,7 +87,7 @@ func TestGlobalsConcurrentUse(t *testing.T) {
 		}()
 	}
 
-	testutils.Sleep(100 * time.Millisecond)
+	zaptest.Sleep(100 * time.Millisecond)
 	stop.Toggle()
 	wg.Wait()
 }
@@ -101,7 +101,12 @@ func TestNewStdLog(t *testing.T) {
 		entry := logs.AllUntimed()[0]
 		assert.Equal(t, []zapcore.Field{}, entry.Context, "Unexpected entry context.")
 		assert.Equal(t, "redirected", entry.Entry.Message, "Unexpected entry message.")
-		assert.Contains(t, entry.Entry.Caller.File, "global_test.go", "Unexpected caller annotation.")
+		assert.Regexp(
+			t,
+			`go.uber.org/zap/global_test.go:\d+$`,
+			entry.Entry.Caller.String(),
+			"Unexpected caller annotation.",
+		)
 	})
 }
 

@@ -13,7 +13,7 @@ In contexts where performance is nice, but not critical, use the
 and includes both structured and `printf`-style APIs.
 
 ```go
-logger, _ := NewProduction()
+logger, _ := zap.NewProduction()
 sugar := logger.Sugar()
 sugar.Infow("Failed to fetch URL.",
   // Structured context as loosely-typed key-value pairs.
@@ -28,7 +28,7 @@ When performance and type safety are critical, use the `Logger`. It's even faste
 the `SugaredLogger` and allocates far less, but it only supports structured logging.
 
 ```go
-logger, _ := NewProduction()
+logger, _ := zap.NewProduction()
 logger.Info("Failed to fetch URL.",
   // Structured context as strongly-typed Field values.
   zap.String("url", url),
@@ -59,45 +59,46 @@ Log a message and 10 fields:
 
 | Library | Time | Bytes Allocated | Objects Allocated |
 | :--- | :---: | :---: | :---: |
-| :zap: zap | 1309 ns/op | 705 B/op | 2 allocs/op |
-| :zap: zap (sugared) | 2669 ns/op | 1931 B/op | 21 allocs/op |
-| logrus | 12689 ns/op | 5783 B/op | 77 allocs/op |
-| go-kit | 8191 ns/op | 3119 B/op | 65 allocs/op |
-| log15 | 25390 ns/op | 5536 B/op | 91 allocs/op |
-| apex/log | 20171 ns/op | 4025 B/op | 64 allocs/op |
-| lion | 11189 ns/op | 5999 B/op | 62 allocs/op |
+| :zap: zap | 1466 ns/op | 705 B/op | 2 allocs/op |
+| :zap: zap (sugared) | 2893 ns/op | 1931 B/op | 21 allocs/op |
+| go-kit | 8183 ns/op | 3119 B/op | 65 allocs/op |
+| lion | 12259 ns/op | 5999 B/op | 62 allocs/op |
+| logrus | 12862 ns/op | 5783 B/op | 77 allocs/op |
+| apex/log | 20317 ns/op | 4024 B/op | 64 allocs/op |
+| log15 | 31855 ns/op | 5536 B/op | 91 allocs/op |
 
 Log a message with a logger that already has 10 fields of context:
 
 | Library | Time | Bytes Allocated | Objects Allocated |
 | :--- | :---: | :---: | :---: |
-| :zap: zap | 449 ns/op | 0 B/op | 0 allocs/op |
-| :zap: zap (sugared) | 675 ns/op | 80 B/op | 2 allocs/op |
-| logrus | 9984 ns/op | 3967 B/op | 61 allocs/op |
-| go-kit | 7760 ns/op | 2950 B/op | 50 allocs/op |
-| log15 | 17967 ns/op | 2546 B/op | 42 allocs/op |
-| apex/log | 17526 ns/op | 2801 B/op | 49 allocs/op |
-| lion | 6109 ns/op | 3978 B/op | 36 allocs/op |
+| :zap: zap | 536 ns/op | 0 B/op | 0 allocs/op |
+| :zap: zap (sugared) | 734 ns/op | 80 B/op | 2 allocs/op |
+| lion | 6784 ns/op | 3978 B/op | 36 allocs/op |
+| go-kit | 8316 ns/op | 2950 B/op | 50 allocs/op |
+| logrus | 10160 ns/op | 3967 B/op | 61 allocs/op |
+| apex/log | 17095 ns/op | 2801 B/op | 49 allocs/op |
+| log15 | 19112 ns/op | 2545 B/op | 42 allocs/op |
 
 Log a static string, without any context or `printf`-style templating:
 
 | Library | Time | Bytes Allocated | Objects Allocated |
 | :--- | :---: | :---: | :---: |
-| :zap: zap | 437 ns/op | 0 B/op | 0 allocs/op |
-| :zap: zap (sugared) | 570 ns/op | 80 B/op | 2 allocs/op |
-| standard library | 615 ns/op | 80 B/op | 2 allocs/op |
-| logrus | 2807 ns/op | 1409 B/op | 25 allocs/op |
-| go-kit | 1177 ns/op | 656 B/op | 13 allocs/op |
-| log15 | 6737 ns/op | 1496 B/op | 24 allocs/op |
-| apex/log | 3342 ns/op | 584 B/op | 11 allocs/op |
-| lion | 1933 ns/op | 1224 B/op | 10 allocs/op |
+| :zap: zap | 521 ns/op | 0 B/op | 0 allocs/op |
+| standard library | 580 ns/op | 80 B/op | 2 allocs/op |
+| :zap: zap (sugared) | 885 ns/op | 80 B/op | 2 allocs/op |
+| go-kit | 1384 ns/op | 656 B/op | 13 allocs/op |
+| lion | 2009 ns/op | 1224 B/op | 10 allocs/op |
+| logrus | 2925 ns/op | 1409 B/op | 25 allocs/op |
+| apex/log | 3723 ns/op | 584 B/op | 11 allocs/op |
+| log15 | 6349 ns/op | 1496 B/op | 24 allocs/op |
 
-## Development Status: Release Candidate 3
-The current release is `v1.0.0-rc.3`. No further breaking changes are *planned*
-unless wider use reveals critical bugs or usability issues, but users who need
-absolute stability should wait for the 1.0.0 release.
+## Development Status: Stable
+All APIs are finalized, and no breaking changes will be made in the 1.x series
+of releases. Users of semver-aware dependency management systems should pin zap
+to `^1`.
 
 <hr>
+
 Released under the [MIT License](LICENSE.txt).
 
 <sup id="footnote-versions">1</sup> In particular, keep in mind that we may be

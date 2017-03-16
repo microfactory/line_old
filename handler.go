@@ -7,6 +7,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// @TODO
+// - add valves: route event intakes from a certain source to a certain handler. focus on testibility; fuzzing? benchmarking? can we monitor side effects and revert them if needed? convert to terraform infra definitions?
+
 // Context provides information about Lambda execution environment.
 type Context struct {
 	FunctionName          string       `json:"function_name"`
