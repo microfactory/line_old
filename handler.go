@@ -2,6 +2,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"regexp"
@@ -12,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"github.com/aws/aws-sdk-go/service/sfn"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -31,28 +33,13 @@ type Worker struct {
 
 //Task describes something that needs to run somewhere
 type Task struct {
-	Image string
-	Size  int
+	Size int
 }
 
 //Alloc is a task assigned to a place where it will run
 type Alloc struct {
-	Task
-	QueueURL string
-}
-
-//Run is an attempt at executing an allocation
-type Run struct {
-	Alloc
-	Token string
-}
-
-func pullTaskRunFromActivity(activityARN string) (*Run, error) {
-	return nil, nil
-}
-
-func sendTaskRunToQueue(run *Run) error {
-	return nil
+	*Task
+	WorkerPK
 }
 
 //Conf holds our configuration taken from the environment
@@ -76,17 +63,19 @@ type Context struct {
 }
 
 //LambdaFunc describes a Lambda handler that matches a specific suffic
-type LambdaFunc func(conf *Conf, logs *zap.Logger, sess *session.Session, ev interface{}) (interface{}, error)
+type LambdaFunc func(conf *Conf, logs *zap.Logger, sess *session.Session, ev json.RawMessage) (interface{}, error)
 
 //LambdaHandlers map arn suffixes to actual event handlers
 var LambdaHandlers = map[*regexp.Regexp]LambdaFunc{
 
 	//Allocate will query workers with enough capacity to handle the incoming tasks. It will query for workers with enough capacity and update the table with a conditional to avoid races for the same capacity
-	regexp.MustCompile(`-alloc$`): func(conf *Conf, logs *zap.Logger, sess *session.Session, ev interface{}) (res interface{}, err error) {
+	regexp.MustCompile(`-alloc$`): func(conf *Conf, logs *zap.Logger, sess *session.Session, ev json.RawMessage) (res interface{}, err error) {
+		task := &Task{Size: 1}
+
 		dbconn := dynamodb.New(sess)
 
 		//query our secondary index for workers with capacity of at least the size of the task we require. @TODO apply conditional filters on results for additional selection
-		taskSize, err := dynamodbattribute.Marshal(1)
+		taskSize, err := dynamodbattribute.Marshal(task.Size)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to marshal task size")
 		}
@@ -154,12 +143,15 @@ var LambdaHandlers = map[*regexp.Regexp]LambdaFunc{
 			return nil, errors.Wrap(err, "failed to update worker capacity")
 		}
 
-		return nil, nil
+		return &Alloc{
+			Task:     task,
+			WorkerPK: worker.WorkerPK,
+		}, nil
 	},
 
-	regexp.MustCompile(`-dealloc$`): func(conf *Conf, logs *zap.Logger, sess *session.Session, ev interface{}) (interface{}, error) {
+	regexp.MustCompile(`-dealloc$`): func(conf *Conf, logs *zap.Logger, sess *session.Session, ev json.RawMessage) (res interface{}, err error) {
 
-		// deallocate can be called with either a succesfull result or an error result. in both cases the task will need to be deallocated.
+		// deallocate can be called with either a succesfull result or an error result. in both cases the task will need to be deallocated. The error result won't contain reliable worker information though so we need to infer that from some other source.
 
 		// if the deallocation is the result of a succesfull run, also update the workers "ttl" field. If not having delivered a succesfull result probably means we would like to clean it up.
 
@@ -167,28 +159,42 @@ var LambdaHandlers = map[*regexp.Regexp]LambdaFunc{
 	},
 
 	//Dispatch pulls activitie tasks as executions and sends them to the correct worker queue. There is no way of only getting activity tasks that belongs to the same exeuction as the invocation of dispatch itself. As such, this handler should never fail and bring the (nested) statemachine itself in a failed state; only the activity can do that. @TODO add a backup cron event that allso dispatches activity tokens that may have been missed due to dispatch misalignment?
-	regexp.MustCompile(`-dispatch$`): func(conf *Conf, logs *zap.Logger, sess *session.Session, ev interface{}) (interface{}, error) {
+	regexp.MustCompile(`-dispatch$`): func(conf *Conf, logs *zap.Logger, sess *session.Session, ev json.RawMessage) (res interface{}, err error) {
 
-		//get an execution from the activity
-		run, err := pullTaskRunFromActivity(conf.RunActivityARN)
-		if err != nil {
-			logs.Error("failed to pull task run from activity", zap.Error(err))
-			return nil, nil
+		//get the run activity task, @TODO randomize the rate at which we get activity task input to force the misalignment between executions
+		sfnconn := sfn.New(sess)
+		var out *sfn.GetActivityTaskOutput
+		if out, err = sfnconn.GetActivityTask(&sfn.GetActivityTaskInput{
+			ActivityArn: aws.String(conf.RunActivityARN),
+		}); err != nil {
+			logs.Error("failed to get activity task", zap.Error(err))
+			return ev, nil
 		}
 
-		//send a run to the assigned queue
-		err = sendTaskRunToQueue(run)
-		if err != nil {
-			logs.Error("failed to send run", zap.Error(err))
-			return nil, nil
+		if _, err = sfnconn.SendTaskSuccess(&sfn.SendTaskSuccessInput{
+			Output:    aws.String(`{"out": "put"}`),
+			TaskToken: out.TaskToken,
+		}); err != nil {
+			logs.Error("failed to send task success", zap.Error(err))
+			return ev, nil
 		}
 
-		return nil, nil
+		//@TODO instead, actually send the task to a worker
+		// if _, err = sfnconn.SendTaskFailure(&sfn.SendTaskFailureInput{
+		// 	Error:     aws.String("MyError"),
+		// 	Cause:     aws.String("some client side provided"),
+		// 	TaskToken: out.TaskToken,
+		// }); err != nil {
+		// 	logs.Error("failed to send task success", zap.Error(err))
+		// 	return ev, nil
+		// }
+
+		return ev, nil
 	},
 }
 
 //Handle is the entrypoint to our Lambda core
-func Handle(ev interface{}, ctx *Context) (interface{}, error) {
+func Handle(ev json.RawMessage, ctx *Context) (interface{}, error) {
 	logs, err := zap.NewProduction()
 	if err != nil {
 		log.Fatalf("failed to create logger: %+v", err)
@@ -206,7 +212,7 @@ func Handle(ev interface{}, ctx *Context) (interface{}, error) {
 	}
 
 	//report loaded configuration for debugging purposes
-	logs.Info("loaded configuration", zap.String("conf", fmt.Sprintf("%+v", conf)))
+	logs.Info("loaded configuration", zap.String("conf", fmt.Sprintf("%+v", conf)), zap.String("ctx", fmt.Sprintf("%+v", ctx)))
 
 	//find a handler that has a name that matches the the calling Lambda ARN
 	var testedExp []string

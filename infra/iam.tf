@@ -56,8 +56,22 @@ data "aws_iam_policy_document" "lambda" {
       "dynamodb:Query"
     ]
 
+    resources = ["${aws_dynamodb_table.workers.arn}*"]
+  }
+
+  //allow state machines activities to be informed
+  statement {
+    actions = [
+      "states:SendTaskHeartbeat",
+      "states:SendTaskFailure",
+      "states:SendTaskSuccess",
+      "states:StartExecution",
+      "states:StopExecution",
+      "states:GetActivityTask"
+    ]
     resources = [
-      "${aws_dynamodb_table.workers.arn}*"
+      "${aws_sfn_activity.run.id}",
+      "${aws_sfn_state_machine.schedule.id}"
     ]
   }
 

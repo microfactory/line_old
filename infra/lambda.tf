@@ -37,7 +37,7 @@ resource "aws_lambda_function" "dispatch" {
   source_code_hash = "${base64sha256(file("handler.zip"))}"
   role = "${aws_iam_role.lambda.arn}"
 
-  timeout = "10"
+  timeout = "65"
   memory_size = "128"
   handler = "handler.Handle"
   runtime = "python2.7"
