@@ -5,9 +5,24 @@
     "Schedule": {
       "Next": "Deallocate",
       "Type": "Parallel",
+      "Retry" : [{
+        "ErrorEquals": ["Exception"],
+        "IntervalSeconds": 10,
+        "MaxAttempts": 999999,
+        "BackoffRate": 1.1
+      }],
+
+      "Catch": [
+        {
+          "ErrorEquals": [ "States.ALL" ],
+          "Next": "Deallocate"
+        }
+      ],
+
       "Branches": [{
         "StartAt": "Allocate",
         "States": {
+
           "Allocate": {
             "Next": "Run",
             "Type": "Task",
@@ -17,6 +32,12 @@
           "Run": {
             "End": true,
             "Type": "Parallel",
+            "Retry" : [{
+              "ErrorEquals": ["States.Timeout"],
+              "IntervalSeconds": 3,
+              "MaxAttempts": 5,
+              "BackoffRate": 1.5
+            }],
             "Branches": [
               {
                 "StartAt": "RunActivity",

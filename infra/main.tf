@@ -19,5 +19,7 @@ data "template_file" "env" {
   vars {
     "LINE_DEPLOYMENT" = "${data.template_file.p.rendered}"
     "LINE_RUN_ACTIVITY_ARN" = "${aws_sfn_activity.run.id}"
+    "TABLE_WORKERS_NAME" = "${aws_dynamodb_table.workers.name}"
+    "TABLE_WORKERS_IDX_CAP" = "${lookup(aws_dynamodb_table.workers.local_secondary_index[0], "name")}"
   }
 }

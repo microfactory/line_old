@@ -46,4 +46,19 @@ data "aws_iam_policy_document" "lambda" {
       "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${data.template_file.p.rendered}*"
     ]
   }
+
+  statement {
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:DeleteItem",
+      "dynamodb:Query"
+    ]
+
+    resources = [
+      "${aws_dynamodb_table.workers.arn}*"
+    ]
+  }
+
 }
