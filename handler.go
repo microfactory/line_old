@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -40,6 +42,7 @@ type Task struct {
 type Alloc struct {
 	*Task
 	WorkerPK
+	Result map[string]interface{}
 }
 
 //Conf holds our configuration taken from the environment
@@ -70,9 +73,9 @@ var LambdaHandlers = map[*regexp.Regexp]LambdaFunc{
 
 	//Allocate will query workers with enough capacity to handle the incoming tasks. It will query for workers with enough capacity and update the table with a conditional to avoid races for the same capacity
 	regexp.MustCompile(`-alloc$`): func(conf *Conf, logs *zap.Logger, sess *session.Session, ev json.RawMessage) (res interface{}, err error) {
-		task := &Task{Size: 1}
-
 		dbconn := dynamodb.New(sess)
+
+		task := &Task{Size: 1}
 
 		//query our secondary index for workers with capacity of at least the size of the task we require. @TODO apply conditional filters on results for additional selection
 		taskSize, err := dynamodbattribute.Marshal(task.Size)
@@ -149,13 +152,42 @@ var LambdaHandlers = map[*regexp.Regexp]LambdaFunc{
 		}, nil
 	},
 
+	//Dealloc is responsible from freeing any capacity claimed by the task that just finished (successfully or not). If the task failed an application error is returned that will cause the outer branch to retry.
 	regexp.MustCompile(`-dealloc$`): func(conf *Conf, logs *zap.Logger, sess *session.Session, ev json.RawMessage) (res interface{}, err error) {
+		alloc := &Alloc{}
+		err = json.Unmarshal(ev, alloc)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to unmarshal input")
+		}
 
-		// deallocate can be called with either a succesfull result or an error result. in both cases the task will need to be deallocated. The error result won't contain reliable worker information though so we need to infer that from some other source.
+		taskSize, err := dynamodbattribute.Marshal(alloc.Task.Size)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to marshal task size")
+		}
 
-		// if the deallocation is the result of a succesfull run, also update the workers "ttl" field. If not having delivered a succesfull result probably means we would like to clean it up.
+		pk, err := dynamodbattribute.MarshalMap(alloc.WorkerPK)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to marshal worker pk")
+		}
 
-		return "dealloc", nil
+		dbconn := dynamodb.New(sess)
+		if _, err := dbconn.UpdateItem(&dynamodb.UpdateItemInput{
+			TableName:        aws.String(conf.WorkersTableName),
+			Key:              pk,
+			UpdateExpression: aws.String(`SET cap = cap + :taskSize`),
+			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+				":taskSize": taskSize,
+			},
+		}); err != nil {
+			return nil, errors.Wrap(err, "failed to release capacity back to worker")
+		}
+
+		//this is were we actually allow the allocation as a whole to fail such it can be retried on a different schedule
+		if allocErr, hasError := alloc.Result["Error"]; hasError {
+			return nil, fmt.Errorf("allocation failed: %+v", allocErr)
+		}
+
+		return ev, nil
 	},
 
 	//Dispatch pulls activitie tasks as executions and sends them to the correct worker queue. There is no way of only getting activity tasks that belongs to the same exeuction as the invocation of dispatch itself. As such, this handler should never fail and bring the (nested) statemachine itself in a failed state; only the activity can do that. @TODO add a backup cron event that allso dispatches activity tokens that may have been missed due to dispatch misalignment?
@@ -171,23 +203,28 @@ var LambdaHandlers = map[*regexp.Regexp]LambdaFunc{
 			return ev, nil
 		}
 
-		if _, err = sfnconn.SendTaskSuccess(&sfn.SendTaskSuccessInput{
-			Output:    aws.String(`{"out": "put"}`),
-			TaskToken: out.TaskToken,
-		}); err != nil {
-			logs.Error("failed to send task success", zap.Error(err))
-			return ev, nil
+		//@TODO make sure to send the task run that ships with the activity, not the input one
+		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		n := r.Intn(10)
+		logs.Info("dice rolled", zap.Int("nr", n))
+		if n < 5 { //has a smaller chance to fail, should eventually converge all tasks succeeding
+			if _, err = sfnconn.SendTaskFailure(&sfn.SendTaskFailureInput{
+				Error:     aws.String("MyError"),
+				Cause:     aws.String("some client side error"),
+				TaskToken: out.TaskToken,
+			}); err != nil {
+				logs.Error("failed to send task failure", zap.Error(err))
+				return ev, nil
+			}
+		} else {
+			if _, err = sfnconn.SendTaskSuccess(&sfn.SendTaskSuccessInput{
+				Output:    aws.String(`{"out": "put"}`),
+				TaskToken: out.TaskToken,
+			}); err != nil {
+				logs.Error("failed to send task success", zap.Error(err))
+				return ev, nil
+			}
 		}
-
-		//@TODO instead, actually send the task to a worker
-		// if _, err = sfnconn.SendTaskFailure(&sfn.SendTaskFailureInput{
-		// 	Error:     aws.String("MyError"),
-		// 	Cause:     aws.String("some client side provided"),
-		// 	TaskToken: out.TaskToken,
-		// }); err != nil {
-		// 	logs.Error("failed to send task success", zap.Error(err))
-		// 	return ev, nil
-		// }
 
 		return ev, nil
 	},
