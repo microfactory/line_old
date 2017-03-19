@@ -4,4 +4,8 @@ import:
 - package: go.uber.org/zap                      #fast structured logging
   version: ^1.0.0
 - package: github.com/aws/aws-sdk-go            #official aws sdk
-  version: ^v1.7.9
+  version: ^1.7.9
+- package: github.com/pkg/errors                #structured error wrapping
+  version: ^0.8.0
+- package: github.com/kelseyhightower/envconfig #parse env configuration
+  version: ^1.3.0

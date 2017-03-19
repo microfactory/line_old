@@ -17,7 +17,7 @@ data "template_file" "p" {
 data "template_file" "env" {
   template = ""
   vars {
-    //State machine
-    "DEPLOYMENT" = "${data.template_file.p.rendered}"
+    "LINE_DEPLOYMENT" = "${data.template_file.p.rendered}"
+    "LINE_RUN_ACTIVITY_ARN" = "${aws_sfn_activity.run.id}"
   }
 }

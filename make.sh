@@ -35,7 +35,6 @@ function run_deploy { #deploy infrastructure resources
 	command -v terraform >/dev/null 2>&1 || { echo "executable 'terraform' (infrastructure manager) must be installed: https://www.terraform.io/" >&2; exit 1; }
 
 	export $(cat secrets.env)
-	run_build
 	echo "--> deploying..."
   terraform apply \
 		-var project=line \

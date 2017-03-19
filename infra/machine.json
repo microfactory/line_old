@@ -1,0 +1,55 @@
+{
+  "Comment": "A state machine that schedules tasks on workers",
+  "StartAt": "Schedule",
+  "States": {
+    "Schedule": {
+      "Next": "Deallocate",
+      "Type": "Parallel",
+      "Branches": [{
+        "StartAt": "Allocate",
+        "States": {
+          "Allocate": {
+            "Next": "Run",
+            "Type": "Task",
+            "Resource": "${alloc_func_arn}"
+          },
+
+          "Run": {
+            "End": true,
+            "Type": "Parallel",
+            "Branches": [
+              {
+                "StartAt": "RunActivity",
+                "States": {
+                  "RunActivity": {
+                    "End": true,
+                    "Type": "Task",
+                    "Resource": "${run_act_arn}",
+                    "TimeoutSeconds": 31622400,
+                    "HeartbeatSeconds": 30
+                  }
+                }
+              },
+
+              {
+                "StartAt": "RunDispatch",
+                "States": {
+                  "RunDispatch": {
+                    "End": true,
+                    "Type": "Task",
+                    "Resource": "${dispatch_func_arn}"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }]
+    },
+    "Deallocate": {
+      "End": true,
+      "Type": "Task",
+      "Resource": "${dealloc_func_arn}"
+    }
+  }
+}

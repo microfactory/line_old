@@ -1,8 +1,12 @@
-hash: f064367f97bce31a9740bdfeab6ca69a72c00b7ba373b9888d1028b441e78f1a
-updated: 2017-03-16T16:47:09.88801628+01:00
+hash: 43c5b18f94a363519eba4e4eef38145147eba72e2ca73ebc61a3082dd6b6d37a
+updated: 2017-03-19T10:02:43.534355271+01:00
 imports:
 - name: github.com/aws/aws-sdk-go
   version: 695fe24acaf9afe80b0ce261d4637f42ba0b4c7d
+- name: github.com/kelseyhightower/envconfig
+  version: f611eb38b3875cc3bd991ca91c51d06446afa14c
+- name: github.com/pkg/errors
+  version: 645ef00459ed84a119197bfb8d8205042c6df63d
 - name: go.uber.org/atomic
   version: 3b8db5e93c4c02efbc313e17b2e796b0914a01fb
 - name: go.uber.org/zap
