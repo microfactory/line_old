@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
@@ -51,6 +52,9 @@ type Conf struct {
 	RunActivityARN     string `envconfig:"RUN_ACTIVITY_ARN"`
 	WorkersTableName   string `envconfig:"TABLE_WORKERS_NAME"`
 	WorkersTableCapIdx string `envconfig:"TABLE_WORKERS_IDX_CAP"`
+	AWSAccessKeyID     string `envconfig:"AWS_ACCESS_KEY_ID"`
+	AWSSecretAccessKey string `envconfig:"AWS_SECRET_ACCESS_KEY"`
+	AWSRegion          string `envconfig:"AWS_REGION"`
 }
 
 // Context provides information about Lambda execution environment.
@@ -75,7 +79,16 @@ var LambdaHandlers = map[*regexp.Regexp]LambdaFunc{
 	regexp.MustCompile(`-alloc$`): func(conf *Conf, logs *zap.Logger, sess *session.Session, ev json.RawMessage) (res interface{}, err error) {
 		dbconn := dynamodb.New(sess)
 
-		task := &Task{Size: 1}
+		//read task input from event and default size to one if its not specified
+		task := &Task{}
+		err = json.Unmarshal(ev, task)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to unmarshal task")
+		}
+
+		if task.Size < 1 {
+			task.Size = 1
+		}
 
 		//query our secondary index for workers with capacity of at least the size of the task we require. @TODO apply conditional filters on results for additional selection
 		taskSize, err := dynamodbattribute.Marshal(task.Size)
@@ -95,7 +108,7 @@ var LambdaHandlers = map[*regexp.Regexp]LambdaFunc{
 				"#cap":  aws.String("cap"),
 			},
 			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-				":poolID":   {S: aws.String("p1")},
+				":poolID":   {S: aws.String("default")},
 				":taskSize": taskSize,
 			},
 		}); err != nil {
@@ -152,7 +165,7 @@ var LambdaHandlers = map[*regexp.Regexp]LambdaFunc{
 		}, nil
 	},
 
-	//Dealloc is responsible from freeing any capacity claimed by the task that just finished (successfully or not). If the task failed an application error is returned that will cause the outer branch to retry.
+	//Dealloc is responsible from freeing any capacity claimed by the task that just finished (successfully or not). If the task failed an application error is returned, this will cause the outer branch to retry and hopefully succeed in another attempt to run the task.
 	regexp.MustCompile(`-dealloc$`): func(conf *Conf, logs *zap.Logger, sess *session.Session, ev json.RawMessage) (res interface{}, err error) {
 		alloc := &Alloc{}
 		err = json.Unmarshal(ev, alloc)
@@ -203,11 +216,12 @@ var LambdaHandlers = map[*regexp.Regexp]LambdaFunc{
 			return ev, nil
 		}
 
-		//@TODO make sure to send the task run that ships with the activity, not the input one
+		//@TODO for now we generate a random number [0,10) that represents an task that takes this many seconds and randomly fails.
 		r := rand.New(rand.NewSource(time.Now().UnixNano()))
 		n := r.Intn(10)
 		logs.Info("dice rolled", zap.Int("nr", n))
-		if n < 5 { //has a smaller chance to fail, should eventually converge all tasks succeeding
+		time.Sleep(time.Duration(n) * time.Second)
+		if n < 3 {
 			if _, err = sfnconn.SendTaskFailure(&sfn.SendTaskFailureInput{
 				Error:     aws.String("MyError"),
 				Cause:     aws.String("some client side error"),
@@ -230,7 +244,7 @@ var LambdaHandlers = map[*regexp.Regexp]LambdaFunc{
 	},
 }
 
-//Handle is the entrypoint to our Lambda core
+//Handle is the entrypoint to our Lambda core, it "routes" invocations from specific Lambda functions to specific handlers based  on a regexp of the function ARN
 func Handle(ev json.RawMessage, ctx *Context) (interface{}, error) {
 	logs, err := zap.NewProduction()
 	if err != nil {
@@ -243,7 +257,16 @@ func Handle(ev json.RawMessage, ctx *Context) (interface{}, error) {
 		logs.Fatal("failed to process env config", zap.Error(err))
 	}
 
-	sess, err := session.NewSession()
+	sess, err := session.NewSession(
+		&aws.Config{
+			Region: aws.String(conf.AWSRegion),
+			Credentials: credentials.NewStaticCredentials(
+				conf.AWSAccessKeyID,
+				conf.AWSSecretAccessKey,
+				"",
+			),
+		},
+	)
 	if err != nil {
 		logs.Fatal("failed to setup aws session", zap.Error(err))
 	}

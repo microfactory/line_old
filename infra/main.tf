@@ -17,9 +17,16 @@ data "template_file" "p" {
 data "template_file" "env" {
   template = ""
   vars {
+    "LINE_AWS_REGION" = "${data.aws_region.current.name}"
+    "LINE_AWS_ACCESS_KEY_ID" = "${aws_iam_access_key.runtime.id}"
+    "LINE_AWS_SECRET_ACCESS_KEY" = "${aws_iam_access_key.runtime.secret}"
     "LINE_DEPLOYMENT" = "${data.template_file.p.rendered}"
     "LINE_RUN_ACTIVITY_ARN" = "${aws_sfn_activity.run.id}"
-    "TABLE_WORKERS_NAME" = "${aws_dynamodb_table.workers.name}"
-    "TABLE_WORKERS_IDX_CAP" = "${lookup(aws_dynamodb_table.workers.local_secondary_index[0], "name")}"
+    "LINE_TABLE_WORKERS_NAME" = "${aws_dynamodb_table.workers.name}"
+    "LINE_TABLE_WORKERS_IDX_CAP" = "${lookup(aws_dynamodb_table.workers.local_secondary_index[0], "name")}"
   }
+}
+
+output "env" {
+  value = "${data.template_file.env.vars}"
 }

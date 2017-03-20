@@ -46,6 +46,23 @@ data "aws_iam_policy_document" "lambda" {
       "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${data.template_file.p.rendered}*"
     ]
   }
+}
+
+//a user of which credentials are carefully scoped for runtime resource management and handing out federated tokens
+resource "aws_iam_user" "runtime" {
+  force_destroy = true
+  name = "${data.template_file.p.rendered}-runtime"
+  path = "/${data.template_file.p.rendered}/"
+}
+
+resource "aws_iam_user_policy" "runtime" {
+  name = "${data.template_file.p.rendered}-runtime"
+  user = "${aws_iam_user.runtime.name}"
+  policy = "${data.aws_iam_policy_document.runtime.json}"
+}
+
+data "aws_iam_policy_document" "runtime" {
+  policy_id = "${data.template_file.p.rendered}-runtime"
 
   statement {
     actions = [
@@ -69,10 +86,15 @@ data "aws_iam_policy_document" "lambda" {
       "states:StopExecution",
       "states:GetActivityTask"
     ]
+
     resources = [
       "${aws_sfn_activity.run.id}",
       "${aws_sfn_state_machine.schedule.id}"
     ]
   }
 
+}
+
+resource "aws_iam_access_key" "runtime" {
+  user    = "${aws_iam_user.runtime.name}"
 }

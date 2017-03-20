@@ -11,6 +11,11 @@ function print_help {
 		| expand -t 30
 }
 
+function run_test { #test our scheduling reactor
+	echo "--> testing..."
+	export $(terraform output env | tr -d ' '); go test -v
+}
+
 function run_install { #install go dependencies
 	command -v glide >/dev/null 2>&1 || { echo "executable 'glide' (dependency manager) must be installed: https://github.com/Masterminds/glide" >&2; exit 1; }
 
@@ -56,6 +61,7 @@ function run_destroy { #destroy deployed infrastructure
 }
 
 case $1 in
+	"test") run_test ;;
 	"install") run_install ;;
 	"build") run_build ;;
 	"deploy") run_deploy ;;
