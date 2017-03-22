@@ -49,6 +49,7 @@ type Alloc struct {
 //Conf holds our configuration taken from the environment
 type Conf struct {
 	Deployment         string `envconfig:"DEPLOYMENT"`
+	StateMachineARN    string `envconfig:"STATE_MACHINE_ARN"`
 	RunActivityARN     string `envconfig:"RUN_ACTIVITY_ARN"`
 	WorkersTableName   string `envconfig:"TABLE_WORKERS_NAME"`
 	WorkersTableCapIdx string `envconfig:"TABLE_WORKERS_IDX_CAP"`
@@ -221,7 +222,7 @@ var LambdaHandlers = map[*regexp.Regexp]LambdaFunc{
 		n := r.Intn(10)
 		logs.Info("dice rolled", zap.Int("nr", n))
 		time.Sleep(time.Duration(n) * time.Second)
-		if n < 3 {
+		if n < 0 {
 			if _, err = sfnconn.SendTaskFailure(&sfn.SendTaskFailureInput{
 				Error:     aws.String("MyError"),
 				Cause:     aws.String("some client side error"),

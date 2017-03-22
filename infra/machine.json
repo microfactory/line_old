@@ -1,5 +1,5 @@
 {
-  "Comment": "A state machine that schedules tasks on workers",
+  "Comment": "A state machine that eventually schedules tasks on workers",
   "StartAt": "Schedule",
   "States": {
     "Schedule": {

@@ -30,7 +30,7 @@ data "aws_iam_policy_document" "lambda" {
   statement {
     actions = ["lambda:InvokeFunction"]
     resources = [
-      "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:line001-advan-*",
+      "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${data.template_file.p.rendered}-*",
     ]
   }
 
@@ -84,12 +84,15 @@ data "aws_iam_policy_document" "runtime" {
       "states:SendTaskSuccess",
       "states:StartExecution",
       "states:StopExecution",
-      "states:GetActivityTask"
+      "states:GetActivityTask",
+      "states:ListExecutions",
+      "states:GetExecutionHistory"
     ]
 
     resources = [
       "${aws_sfn_activity.run.id}",
-      "${aws_sfn_state_machine.schedule.id}"
+      "${aws_sfn_state_machine.schedule.id}",
+      "arn:aws:states:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:execution:${aws_sfn_state_machine.schedule.name}:*"
     ]
   }
 

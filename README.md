@@ -5,6 +5,8 @@ A framework that compiles to distributed AWS primitives
 
 ### TODO, have gc process that:
 
-- notices (states.Runtime) failures & aborted runs and deallocates their size:
-{"error":"States.Runtime","cause":"Internal Error (456099e1-2efe-4864-b172-691fc458a046)"}
-- empties unaligned activities
+Current Challenges:
+- how to deallocate on user/admin aborts of the state machines
+- how to retry and deallocate on system failures: "States.Runtime" and "Lambda.Unkown"
+- unaligned activity tokens
+- very inefficient in a stable situation (infinite retries)
