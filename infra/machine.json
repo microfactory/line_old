@@ -1,90 +1,19 @@
 {
   "Comment": "A state machine that eventually schedules tasks on workers",
-  "StartAt": "Schedule",
+  "StartAt": "Run",
   "States": {
-    "Schedule": {
-      "End": true,
-      "Type": "Parallel",
+    "Run": {
       "Retry" : [{
-        "ErrorEquals": ["States.ALL"],
-        "IntervalSeconds": 10,
-        "MaxAttempts": 3,
-        "BackoffRate": 1.5
+        "ErrorEquals": ["States.Timeout"],
+        "IntervalSeconds": 2,
+        "MaxAttempts": 9999999,
+        "BackoffRate": 1
       }],
-      "Branches": [{
-
-        "StartAt": "Allocate",
-        "States": {
-          "Deallocate": {
-            "End": true,
-            "Type": "Task",
-            "Resource": "${dealloc_func_arn}"
-          },
-
-          "C": {
-            "Next": "Deallocate",
-            "Type": "Pass",
-            "InputPath": "$.[0]"
-          },
-
-          "Allocate": {
-            "Next": "Run",
-            "Type": "Task",
-            "Resource": "${alloc_func_arn}",
-            "Retry" : [{
-              "ErrorEquals": ["Exception"],
-              "IntervalSeconds": 10,
-              "MaxAttempts": 999999,
-              "BackoffRate": 1.1
-            }]
-          },
-
-          "Run": {
-            "Next": "C",
-            "Type": "Parallel",
-            "Retry" : [{
-              "ErrorEquals": ["States.Timeout"],
-              "IntervalSeconds": 3,
-              "MaxAttempts": 5,
-              "BackoffRate": 1.5
-            }],
-            "Catch": [{
-              "ErrorEquals": ["States.ALL"],
-              "ResultPath": "$.Result",
-              "Next": "Deallocate"
-            }],
-            "Branches": [
-              {
-                "StartAt": "RunActivity",
-                "States": {
-                  "RunActivity": {
-                    "End": true,
-                    "ResultPath": "$.Result",
-                    "Type": "Task",
-                    "Resource": "${run_act_arn}",
-                    "TimeoutSeconds": 31622400,
-                    "HeartbeatSeconds": 30
-                  }
-                }
-              },
-
-              {
-                "StartAt": "RunDispatch",
-                "States": {
-                  "RunDispatch": {
-                    "End": true,
-                    "ResultPath": "$.Result",
-                    "Type": "Task",
-                    "Resource": "${dispatch_func_arn}",
-                    "TimeoutSeconds": 5
-                  }
-                }
-              }
-            ]
-          }
-        }
-
-      }]
+      "End": true,
+      "Type": "Task",
+      "Resource": "${run_act_arn}",
+      "TimeoutSeconds": 31622400,
+      "HeartbeatSeconds": 60
     }
   }
 }

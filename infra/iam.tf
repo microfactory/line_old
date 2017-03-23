@@ -34,10 +34,14 @@ data "aws_iam_policy_document" "lambda" {
     ]
   }
 
+  statement {
+    actions = ["states:StartExecution"]
+    resources = ["*"]
+  }
+
   //allow role to write stdin/out to cloudwatch log groups
   statement {
     actions = [
-      "logs:CreateLogGroup",
       "logs:CreateLogStream",
       "logs:PutLogEvents",
       "logs:DescribeLogStreams"
@@ -64,18 +68,6 @@ resource "aws_iam_user_policy" "runtime" {
 data "aws_iam_policy_document" "runtime" {
   policy_id = "${data.template_file.p.rendered}-runtime"
 
-  statement {
-    actions = [
-      "dynamodb:GetItem",
-      "dynamodb:PutItem",
-      "dynamodb:UpdateItem",
-      "dynamodb:DeleteItem",
-      "dynamodb:Query"
-    ]
-
-    resources = ["${aws_dynamodb_table.workers.arn}*"]
-  }
-
   //allow state machines activities to be informed
   statement {
     actions = [
@@ -96,6 +88,18 @@ data "aws_iam_policy_document" "runtime" {
     ]
   }
 
+  statement {
+    actions = [
+      "sqs:SendMessage",
+      "sqs:CreateQueue",
+      "sqs:ReceiveMessage",
+      "sqs:DeleteQueue",
+      "sqs:DeleteMessage"
+    ]
+    resources = [
+      "arn:aws:sqs:*:${data.aws_caller_identity.current.account_id}:${data.template_file.p.rendered}*"
+    ]
+  }
 }
 
 resource "aws_iam_access_key" "runtime" {

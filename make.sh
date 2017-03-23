@@ -11,6 +11,11 @@ function print_help {
 		| expand -t 30
 }
 
+function run_work { #test our worker logic
+	echo "--> working..."
+	export $(terraform output env | tr -d ' '); go run ./work/main.go
+}
+
 function run_test { #test our scheduling reactor
 	echo "--> testing..."
 	export $(terraform output env | tr -d ' '); go test -v
@@ -61,6 +66,7 @@ function run_destroy { #destroy deployed infrastructure
 }
 
 case $1 in
+	"work") run_work ;;
 	"test") run_test ;;
 	"install") run_install ;;
 	"build") run_build ;;
