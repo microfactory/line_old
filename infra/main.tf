@@ -1,8 +1,8 @@
 variable "project" {}
 variable "version" {}
 variable "owner" {}
-resource "random_id" "id" { byte_length = 4 }
 
+resource "random_id" "id" { byte_length = 4 }
 data "aws_region" "current" { current = true }
 data "aws_caller_identity" "current" {}
 
@@ -31,4 +31,8 @@ data "template_file" "env" {
 
 output "env" {
   value = "${data.template_file.env.vars}"
+}
+
+output "endpoint" {
+  value = "https://${aws_api_gateway_rest_api.main.id}.execute-api.eu-west-1.amazonaws.com/${aws_api_gateway_deployment.main.stage_name}"
 }

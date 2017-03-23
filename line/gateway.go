@@ -1,7 +1,12 @@
 package line
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/pkg/errors"
@@ -36,10 +41,68 @@ func HandleGateway(conf *Conf, logs *zap.Logger, sess *session.Session, ev json.
 		return nil, errors.Wrap(err, "failed to decode gateway request")
 	}
 
-	logs.Info("received gateway json", zap.String("json", string(ev)))
+	//parse path
+	loc, err := url.Parse(req.Path)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse request path")
+	}
 
-	return &GatewayResponse{
-		StatusCode: 200,
-		Body:       "hello, world",
-	}, nil
+	//strip path base
+	if conf.StripBaseMappings > 0 {
+		comps := strings.SplitN(
+			strings.TrimLeft(loc.Path, "/"),
+			"/", conf.StripBaseMappings+1)
+		if len(comps) >= conf.StripBaseMappings {
+			loc.Path = "/" + strings.Join(comps[conf.StripBaseMappings:], "/")
+		} else {
+			loc.Path = "/"
+		}
+	}
+
+	q := loc.Query()
+	for k, param := range req.QueryStringParameters {
+		q.Set(k, param)
+	}
+
+	loc.RawQuery = q.Encode()
+	r, err := http.NewRequest(req.HTTPMethod, loc.String(), bytes.NewBufferString(req.Body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to turn event %+v into http request: %v", req, err)
+	}
+
+	for k, val := range req.Headers {
+		for _, v := range strings.Split(val, ",") {
+			r.Header.Add(k, strings.TrimSpace(v))
+		}
+	}
+
+	w := &bufferedResponse{
+		statusCode: http.StatusOK, //like standard lib, assume 200
+		header:     http.Header{},
+		Buffer:     bytes.NewBuffer(nil),
+	}
+
+	Mux(conf, logs, sess).ServeHTTP(w, r)
+
+	resp := &GatewayResponse{
+		StatusCode: w.statusCode,
+		Body:       w.Buffer.String(),
+		Headers:    map[string]string{},
+	}
+
+	for k, v := range w.header {
+		resp.Headers[k] = strings.Join(v, ",")
+	}
+
+	return resp, nil
 }
+
+//bufferedResponse implements the response writer interface but buffers the body which is necessary for the creating a JSON formatted Lambda response anyway
+type bufferedResponse struct {
+	statusCode int
+	header     http.Header
+	*bytes.Buffer
+}
+
+func (br *bufferedResponse) Header() http.Header    { return br.header }
+func (br *bufferedResponse) WriteHeader(status int) { br.statusCode = status }
