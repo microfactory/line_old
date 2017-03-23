@@ -3,7 +3,6 @@ package line
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -67,7 +66,7 @@ func HandleGateway(conf *Conf, logs *zap.Logger, sess *session.Session, ev json.
 	loc.RawQuery = q.Encode()
 	r, err := http.NewRequest(req.HTTPMethod, loc.String(), bytes.NewBufferString(req.Body))
 	if err != nil {
-		return nil, fmt.Errorf("failed to turn event %+v into http request: %v", req, err)
+		return nil, errors.Wrap(err, "failed to create HTTP request")
 	}
 
 	for k, val := range req.Headers {
