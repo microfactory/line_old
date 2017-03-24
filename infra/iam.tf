@@ -100,6 +100,20 @@ data "aws_iam_policy_document" "runtime" {
       "arn:aws:sqs:*:${data.aws_caller_identity.current.account_id}:${data.template_file.p.rendered}*"
     ]
   }
+
+  statement {
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:DeleteItem",
+      "dynamodb:Query"
+    ]
+    resources = [
+      "${aws_dynamodb_table.pools.arn}*",
+    ]
+  }
+
 }
 
 resource "aws_iam_access_key" "runtime" {

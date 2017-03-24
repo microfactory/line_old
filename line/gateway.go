@@ -7,9 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/pkg/errors"
-	"go.uber.org/zap"
 )
 
 // GatewayRequest represents an Amazon API Gateway Proxy Event.
@@ -33,7 +31,7 @@ type GatewayResponse struct {
 }
 
 //HandleGateway takes invocations from the API Gateway and handles them as HTTP requests to return HTTP responses based on restful principles
-func HandleGateway(conf *Conf, logs *zap.Logger, sess *session.Session, ev json.RawMessage) (res interface{}, err error) {
+func HandleGateway(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}, err error) {
 	req := &GatewayRequest{}
 	err = json.Unmarshal(ev, req)
 	if err != nil {
@@ -81,7 +79,7 @@ func HandleGateway(conf *Conf, logs *zap.Logger, sess *session.Session, ev json.
 		Buffer:     bytes.NewBuffer(nil),
 	}
 
-	Mux(conf, logs, sess).ServeHTTP(w, r)
+	Mux(conf, svc).ServeHTTP(w, r)
 
 	resp := &GatewayResponse{
 		StatusCode: w.statusCode,

@@ -10,6 +10,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/sfn"
+	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -56,6 +59,13 @@ func Handle(ev json.RawMessage, ctx *Context) (interface{}, error) {
 		logs.Fatal("failed to setup aws session", zap.Error(err))
 	}
 
+	svc := &line.Services{
+		SQS:  sqs.New(sess),
+		SFN:  sfn.New(sess),
+		DB:   dynamodb.New(sess),
+		Logs: logs,
+	}
+
 	//report loaded configuration for debugging purposes
 	logs.Info("loaded configuration", zap.String("conf", fmt.Sprintf("%+v", conf)), zap.String("ctx", fmt.Sprintf("%+v", ctx)))
 
@@ -65,8 +75,7 @@ func Handle(ev json.RawMessage, ctx *Context) (interface{}, error) {
 		if exp.MatchString(ctx.InvokedFunctionARN) {
 			return handler(
 				conf,
-				logs.With(zap.String("λ", ctx.InvokedFunctionARN)),
-				sess,
+				svc,
 				ev,
 			)
 		}
