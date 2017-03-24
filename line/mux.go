@@ -41,14 +41,18 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 			return errors.Wrap(err, "failed to create pool queue")
 		}
 
-		if err := PutNewPool(conf, svc.DB, &Pool{
+		pool := &Pool{
 			PoolPK:   PoolPK{PoolID: poolID},
 			QueueURL: aws.StringValue(out.QueueUrl),
-		}); err != nil {
+		}
+
+		if err := PutNewPool(conf, svc.DB, pool); err != nil {
 			return errors.Wrap(err, "failed to put pool")
 		}
 
-		return nil
+		w.WriteHeader(http.StatusCreated)
+		enc := json.NewEncoder(w)
+		return enc.Encode(pool)
 	}))
 
 	//
