@@ -52,3 +52,26 @@ func PutNewTask(conf *Conf, db DB, task *Task) (err error) {
 
 	return nil
 }
+
+//DeleteTask deletes a worker by pk
+func DeleteTask(conf *Conf, db DB, tpk TaskPK) (err error) {
+	pk, err := dynamodbattribute.MarshalMap(tpk)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal keys map")
+	}
+
+	if _, err = db.DeleteItem(&dynamodb.DeleteItemInput{
+		TableName:           aws.String(conf.TasksTableName),
+		Key:                 pk,
+		ConditionExpression: aws.String("attribute_exists(tsk)"),
+	}); err != nil {
+		aerr, ok := err.(awserr.Error)
+		if !ok || aerr.Code() != dynamodb.ErrCodeConditionalCheckFailedException {
+			return errors.Wrap(err, "failed to delete item")
+		}
+
+		return ErrTaskNotExists
+	}
+
+	return nil
+}

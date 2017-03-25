@@ -21,6 +21,11 @@ func FmtQueueURL(conf *Conf, poolID string) string {
 	return fmt.Sprintf("https://sqs.%s.amazonaws.com/%s/%s-%s", conf.AWSRegion, conf.AWSAccountID, conf.Deployment, poolID)
 }
 
+//FmtExecARN "predict" the execution arn as to not having to keep it in state arn:aws:states:eu-west-1:399106104436:execution:f9e4beb4-line001-advan-schedule:abc-532df0adac48da0bf5f9
+func FmtExecARN(conf *Conf, projectID, taskID string) string {
+	return fmt.Sprintf("arn:aws:states:%s:%s:execution:%s-schedule:%s-%s", conf.AWSRegion, conf.AWSAccountID, conf.Deployment, projectID, taskID)
+}
+
 //Mux sets up the HTTP multiplexer
 func Mux(conf *Conf, svc *Services) http.Handler {
 	r := chi.NewRouter()
@@ -28,17 +33,13 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 	//
 	// Create Task
 	//
-	r.Post("/tasks", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
+	r.Post("/:projectID/tasks", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
 
 		task := &Task{}
 		dec := json.NewDecoder(r.Body)
 		err = dec.Decode(task)
 		if err != nil {
 			return errors.Wrap(err, "failed to decode task")
-		}
-
-		if task.ProjectID == "" {
-			return errors.Errorf("no project id provided")
 		}
 
 		if task.PoolID == "" {
@@ -51,6 +52,7 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 			return errors.Wrap(err, "failed to read random id")
 		}
 
+		task.ProjectID = chi.URLParam(r, "projectID")
 		task.TaskID = hex.EncodeToString(idb)
 		if err := PutNewTask(conf, svc.DB, task); err != nil {
 			return errors.Wrap(err, "failed to put task")
@@ -66,12 +68,41 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 		if _, err = svc.SFN.StartExecution(&sfn.StartExecutionInput{
 			StateMachineArn: aws.String(conf.StateMachineARN),
 			Input:           aws.String(buf.String()),
+			Name: aws.String(
+				fmt.Sprintf("%s-%s", task.ProjectID, task.TaskID),
+			),
 		}); err != nil {
 			return errors.Wrap(err, "failed to schedule task")
 		}
 
 		_, err = io.Copy(w, buf)
 		return err
+	}))
+
+	//
+	// Delete Task
+	//
+	r.Delete("/:projectID/tasks/:taskID", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
+		tpk := TaskPK{
+			TaskID:    chi.URLParam(r, "taskID"),
+			ProjectID: chi.URLParam(r, "projectID"),
+		}
+
+		err = DeleteTask(conf, svc.DB, tpk)
+		if err != nil {
+			return errors.Wrap(err, "failed to remove task")
+		}
+
+		execARN := FmtExecARN(conf, tpk.ProjectID, tpk.TaskID)
+		if _, err = svc.SFN.StopExecution(&sfn.StopExecutionInput{
+			ExecutionArn: aws.String(execARN),
+			Error:        aws.String("HumanAbort"),
+			Cause:        aws.String("API client aborted execution"),
+		}); err != nil {
+			return errors.Wrap(err, "failed to stop execution")
+		}
+
+		return nil
 	}))
 
 	//
@@ -89,6 +120,9 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 		var out *sqs.CreateQueueOutput
 		if out, err = svc.SQS.CreateQueue(&sqs.CreateQueueInput{
 			QueueName: aws.String(fmt.Sprintf("%s-%s", conf.Deployment, poolID)),
+			Attributes: map[string]*string{
+				"MessageRetentionPeriod": aws.String("60"),
+			},
 		}); err != nil {
 			return errors.Wrap(err, "failed to create pool queue")
 		}
