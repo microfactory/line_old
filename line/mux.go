@@ -23,9 +23,44 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 	r := chi.NewRouter()
 
 	//
+	// Create Task
+	//
+	r.Post("/tasks", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
+
+		task := &Task{}
+		dec := json.NewDecoder(r.Body)
+		err = dec.Decode(task)
+		if err != nil {
+			return errors.Wrap(err, "failed to decode task")
+		}
+
+		if task.ProjectID == "" {
+			return errors.Errorf("no project id provided")
+		}
+
+		if task.PoolID == "" {
+			return errors.Errorf("no pool id provided")
+		}
+
+		idb := make([]byte, 10)
+		_, err = rand.Read(idb)
+		if err != nil {
+			return errors.Wrap(err, "failed to read random id")
+		}
+
+		task.TaskID = hex.EncodeToString(idb)
+		if err := PutNewTask(conf, svc.DB, task); err != nil {
+			return errors.Wrap(err, "failed to put task")
+		}
+
+		enc := json.NewEncoder(w)
+		return enc.Encode(task)
+	}))
+
+	//
 	// Create Pool
 	//
-	r.Post("/pool", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
+	r.Post("/pools", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
 
 		idb := make([]byte, 10)
 		_, err = rand.Read(idb)
@@ -58,7 +93,7 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 	//
 	// Delete Pool
 	//
-	r.Delete("/pool/:poolID", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
+	r.Delete("/pools/:poolID", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
 
 		ppk := PoolPK{chi.URLParam(r, "poolID")}
 		if err := DeletePool(conf, svc.DB, ppk); err != nil {

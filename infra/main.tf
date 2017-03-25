@@ -28,6 +28,7 @@ data "template_file" "env" {
     "LINE_DEPLOYMENT" = "${data.template_file.p.rendered}"
     "LINE_RUN_ACTIVITY_ARN" = "${aws_sfn_activity.run.id}"
     "LINE_TABLE_NAME_POOLS" = "${aws_dynamodb_table.pools.name}"
+    "LINE_TABLE_NAME_TASKS" = "${aws_dynamodb_table.tasks.name}"
   }
 }
 

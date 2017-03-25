@@ -33,6 +33,7 @@ type Conf struct {
 	PoolQueueURL       string `envconfig:"POOL_QUEUE_URL"`
 	StripBaseMappings  int    `envconfig:"STRIP_BASE_MAPPINGS"`
 	PoolsTableName     string `envconfig:"TABLE_NAME_POOLS"`
+	TasksTableName     string `envconfig:"TABLE_NAME_TASKS"`
 }
 
 //Handler describes a Lambda handler that matches a specific suffic

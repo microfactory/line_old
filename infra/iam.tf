@@ -111,6 +111,7 @@ data "aws_iam_policy_document" "runtime" {
     ]
     resources = [
       "${aws_dynamodb_table.pools.arn}*",
+      "${aws_dynamodb_table.tasks.arn}*",
     ]
   }
 
