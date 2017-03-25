@@ -1,13 +1,16 @@
 package line
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/sfn"
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/pkg/errors"
 	"github.com/pressly/chi"
@@ -53,8 +56,22 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 			return errors.Wrap(err, "failed to put task")
 		}
 
-		enc := json.NewEncoder(w)
-		return enc.Encode(task)
+		buf := bytes.NewBuffer(nil)
+		enc := json.NewEncoder(buf)
+		err = enc.Encode(task)
+		if err != nil {
+			return errors.Wrap(err, "failed to encode task")
+		}
+
+		if _, err = svc.SFN.StartExecution(&sfn.StartExecutionInput{
+			StateMachineArn: aws.String(conf.StateMachineARN),
+			Input:           aws.String(buf.String()),
+		}); err != nil {
+			return errors.Wrap(err, "failed to schedule task")
+		}
+
+		_, err = io.Copy(w, buf)
+		return err
 	}))
 
 	//
