@@ -40,6 +40,51 @@ func HandleRelease(conf *Conf, svc *Services, ev json.RawMessage) (res interface
 	}
 
 	svc.Logs.Info("allocations expired", zap.Int("n", len(out.Items)))
+	for _, item := range out.Items {
+		alloc := &Alloc{}
+		err = dynamodbattribute.UnmarshalMap(item, alloc)
+		if err != nil {
+			svc.Logs.Error("failed to unmarshal expired alloc", zap.Error(err))
+			continue
+		}
+
+		if alloc.WorkerID == "" {
+			svc.Logs.Error("allocation has no worker field")
+			continue
+		}
+
+		wpk, err := dynamodbattribute.MarshalMap(WorkerPK{PoolID: alloc.PoolID, WorkerID: alloc.WorkerID})
+		if err != nil {
+			svc.Logs.Error("failed to marshal worker pk", zap.Error(err))
+			continue
+		}
+
+		if _, err := svc.DB.UpdateItem(&dynamodb.UpdateItemInput{
+			TableName:        aws.String(conf.WorkersTableName),
+			Key:              wpk,
+			UpdateExpression: aws.String(`SET cap = cap + :allocSize`),
+			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+				":allocSize": item["size"],
+			},
+		}); err != nil {
+			svc.Logs.Error("failed to release capacity back to worker", zap.Error(err))
+			continue
+		}
+
+		apk, err := dynamodbattribute.MarshalMap(alloc.AllocPK)
+		if err != nil {
+			svc.Logs.Error("failed to marshal worker pk", zap.Error(err))
+			continue
+		}
+
+		if _, err = svc.DB.DeleteItem(&dynamodb.DeleteItemInput{
+			TableName: aws.String(conf.AllocsTableName),
+			Key:       apk,
+		}); err != nil {
+			svc.Logs.Error("failed to delete allocation, double release imminent", zap.Error(err), zap.String("double_release", alloc.WorkerID))
+			continue
+		}
+	}
 
 	return ev, nil
 }

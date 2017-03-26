@@ -68,6 +68,6 @@ resource "aws_dynamodb_table" "allocs" {
     name               = "ttl_idx"
     range_key          = "ttl"
     projection_type    = "INCLUDE"
-    non_key_attributes = ["wrk"]
+    non_key_attributes = ["wrk", "size"]
   }
 }
