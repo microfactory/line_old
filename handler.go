@@ -11,7 +11,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/sfn"
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/pkg/errors"
@@ -61,7 +60,6 @@ func Handle(ev json.RawMessage, ctx *Context) (interface{}, error) {
 
 	svc := &line.Services{
 		SQS:  sqs.New(sess),
-		SFN:  sfn.New(sess),
 		DB:   dynamodb.New(sess),
 		Logs: logs,
 	}

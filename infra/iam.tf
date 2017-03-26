@@ -68,26 +68,6 @@ resource "aws_iam_user_policy" "runtime" {
 data "aws_iam_policy_document" "runtime" {
   policy_id = "${data.template_file.p.rendered}-runtime"
 
-  //allow state machines activities to be informed
-  statement {
-    actions = [
-      "states:SendTaskHeartbeat",
-      "states:SendTaskFailure",
-      "states:SendTaskSuccess",
-      "states:StartExecution",
-      "states:StopExecution",
-      "states:GetActivityTask",
-      "states:ListExecutions",
-      "states:GetExecutionHistory"
-    ]
-
-    resources = [
-      "${aws_sfn_activity.run.id}",
-      "${aws_sfn_state_machine.schedule.id}",
-      "arn:aws:states:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:execution:${aws_sfn_state_machine.schedule.name}:*"
-    ]
-  }
-
   statement {
     actions = [
       "sqs:SendMessage",
@@ -110,11 +90,11 @@ data "aws_iam_policy_document" "runtime" {
       "dynamodb:Query"
     ]
     resources = [
-      "${aws_dynamodb_table.pools.arn}*",
+      "${aws_dynamodb_table.workers.arn}*",
+      "${aws_dynamodb_table.allocs.arn}*",
       "${aws_dynamodb_table.tasks.arn}*",
     ]
   }
-
 }
 
 resource "aws_iam_access_key" "runtime" {

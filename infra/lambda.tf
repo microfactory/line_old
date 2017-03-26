@@ -1,5 +1,5 @@
-resource "aws_lambda_function" "dispatch" {
-  function_name = "${data.template_file.p.rendered}-dispatch"
+resource "aws_lambda_function" "alloc" {
+  function_name = "${data.template_file.p.rendered}-alloc"
   description = "send task to the pool's queue"
   filename = "handler.zip"
   source_code_hash = "${base64sha256(file("handler.zip"))}"
@@ -17,9 +17,9 @@ resource "aws_lambda_function" "dispatch" {
 resource "aws_lambda_permission" "allow_event" {
   statement_id = "${data.template_file.p.rendered}-event"
   action = "lambda:InvokeFunction"
-  function_name = "${aws_lambda_function.dispatch.arn}"
+  function_name = "${aws_lambda_function.alloc.arn}"
   principal = "events.amazonaws.com"
-  source_arn = "${aws_cloudwatch_event_rule.dispatch_tick.arn}"
+  source_arn = "${aws_cloudwatch_event_rule.alloc_tick.arn}"
 }
 
 resource "aws_lambda_function" "gateway" {
