@@ -19,6 +19,8 @@ type TaskPK struct {
 type Task struct {
 	TaskPK
 	PoolID        string `dynamodbav:"pool"`
+	CPUCores      int    `dynamodbav:"cpu"`
+	MemoryMB      int    `dynamodbav:"mem"`
 	ActivityToken string `dynamodbav:"-"`
 }
 

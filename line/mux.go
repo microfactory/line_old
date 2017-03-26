@@ -31,6 +31,16 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 	r := chi.NewRouter()
 
 	//
+	// Create Provider Tokens
+	//
+	r.Post("/:projectID/tokens", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
+
+		//@TODO how to authorize pools
+
+		return nil
+	}))
+
+	//
 	// Create Task
 	//
 	r.Post("/:projectID/tasks", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
@@ -46,12 +56,19 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 			return errors.Errorf("no pool id provided")
 		}
 
+		pool, err := GetPool(conf, svc.DB, PoolPK{PoolID: task.PoolID})
+		if err != nil {
+			return errors.Wrap(err, "couldnt get pool")
+		}
+
 		idb := make([]byte, 10)
 		_, err = rand.Read(idb)
 		if err != nil {
 			return errors.Wrap(err, "failed to read random id")
 		}
 
+		task.MemoryMB = pool.MemoryMB
+		task.CPUCores = pool.CPUCores
 		task.ProjectID = chi.URLParam(r, "projectID")
 		task.TaskID = hex.EncodeToString(idb)
 		if err := PutNewTask(conf, svc.DB, task); err != nil {
@@ -109,6 +126,20 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 	// Create Pool
 	//
 	r.Post("/pools", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
+		pool := &Pool{}
+		dec := json.NewDecoder(r.Body)
+		err = dec.Decode(pool)
+		if err != nil {
+			return errors.Wrap(err, "failed to decode pool")
+		}
+
+		if pool.CPUCores == 0 {
+			pool.CPUCores = 1
+		}
+
+		if pool.MemoryMB == 0 {
+			pool.MemoryMB = 1600
+		}
 
 		idb := make([]byte, 10)
 		_, err = rand.Read(idb)
@@ -127,11 +158,8 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 			return errors.Wrap(err, "failed to create pool queue")
 		}
 
-		pool := &Pool{
-			PoolPK:   PoolPK{PoolID: poolID},
-			QueueURL: aws.StringValue(out.QueueUrl),
-		}
-
+		pool.PoolPK = PoolPK{PoolID: poolID}
+		pool.QueueURL = aws.StringValue(out.QueueUrl)
 		if err := PutNewPool(conf, svc.DB, pool); err != nil {
 			return errors.Wrap(err, "failed to put pool")
 		}

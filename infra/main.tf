@@ -19,7 +19,6 @@ data "template_file" "p" {
 data "template_file" "env" {
   template = ""
   vars {
-    "LINE_POOL_QUEUE_URL" = "${aws_sqs_queue.pool.id}"
     "LINE_STATE_MACHINE_ARN" = "arn:aws:states:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:stateMachine:${data.template_file.p.rendered}-schedule"
     "LINE_AWS_ACCOUNT_ID" = "${data.aws_caller_identity.current.account_id}"
     "LINE_AWS_REGION" = "${data.aws_region.current.name}"

@@ -17,6 +17,8 @@ type PoolPK struct {
 type Pool struct {
 	PoolPK
 	QueueURL string `dynamodbav:"que"`
+	CPUCores int    `dynamodbav:"cpu"`
+	MemoryMB int    `dynamodbav:"mem"`
 }
 
 var (
@@ -77,4 +79,32 @@ func DeletePool(conf *Conf, db DB, ppk PoolPK) (err error) {
 	}
 
 	return nil
+}
+
+//GetPool returns a worker by its primary key
+func GetPool(conf *Conf, db DB, ppk PoolPK) (pool *Pool, err error) {
+	pk, err := dynamodbattribute.MarshalMap(ppk)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to marshal keys map")
+	}
+
+	var out *dynamodb.GetItemOutput
+	if out, err = db.GetItem(&dynamodb.GetItemInput{
+		TableName: aws.String(conf.PoolsTableName),
+		Key:       pk,
+	}); err != nil {
+		return nil, errors.Wrap(err, "failed to get item")
+	}
+
+	if out.Item == nil {
+		return nil, ErrPoolNotExists
+	}
+
+	pool = &Pool{}
+	err = dynamodbattribute.UnmarshalMap(out.Item, pool)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal item")
+	}
+
+	return pool, nil
 }

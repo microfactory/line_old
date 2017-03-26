@@ -30,7 +30,6 @@ type Conf struct {
 	AWSAccessKeyID     string `envconfig:"AWS_ACCESS_KEY_ID"`
 	AWSSecretAccessKey string `envconfig:"AWS_SECRET_ACCESS_KEY"`
 	AWSRegion          string `envconfig:"AWS_REGION"`
-	PoolQueueURL       string `envconfig:"POOL_QUEUE_URL"`
 	StripBaseMappings  int    `envconfig:"STRIP_BASE_MAPPINGS"`
 	PoolsTableName     string `envconfig:"TABLE_NAME_POOLS"`
 	TasksTableName     string `envconfig:"TABLE_NAME_TASKS"`
