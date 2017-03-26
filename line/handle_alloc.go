@@ -90,10 +90,10 @@ func Schedule(conf *Conf, svc *Services, task *Task) (alloc *Alloc, err error) {
 	}
 
 	alloc = &Alloc{
-		AllocPK: AllocPK{WorkerID: worker.WorkerID, TaskID: task.TaskID},
-		Size:    task.Size,
-		TTL:     time.Now().Unix() + conf.AllocTTL,
-		Pool:    worker.PoolID,
+		AllocPK:  AllocPK{PoolID: worker.PoolID, TaskID: task.TaskID},
+		Size:     task.Size,
+		TTL:      time.Now().Unix() + conf.AllocTTL,
+		WorkerID: worker.WorkerID,
 	}
 
 	return alloc, nil
@@ -113,6 +113,7 @@ func DeleteTaskMsg(conf *Conf, svc *Services, msg *sqs.Message) (err error) {
 //HandleAlloc is a Lambda handler that periodically reads from the scheduling queue and queries the workers table for available capacity. If the capacity can be claimed an allocation is created.
 func HandleAlloc(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}, err error) {
 
+	//@TODO do for each pool (concurrently)
 	for {
 		var out *sqs.ReceiveMessageOutput
 		if out, err = svc.SQS.ReceiveMessage(&sqs.ReceiveMessageInput{

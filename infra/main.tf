@@ -32,7 +32,7 @@ data "template_file" "env" {
     "LINE_TABLE_NAME_TASKS" = "${aws_dynamodb_table.tasks.name}"
     "LINE_TABLE_NAME_WORKERS" = "${aws_dynamodb_table.workers.name}"
     "LINE_TABLE_IDX_WORKERS_CAP" = "${lookup(aws_dynamodb_table.workers.global_secondary_index[0], "name")}"
-    // "LINE_TABLE_IDX_ALLOCS_TTL" = "${lookup(aws_dynamodb_table.allocs.global_secondary_index[0], "name")}"
+    "LINE_TABLE_IDX_ALLOCS_TTL" = "${lookup(aws_dynamodb_table.allocs.local_secondary_index[0], "name")}"
     "LINE_TABLE_NAME_ALLOCS" = "${aws_dynamodb_table.allocs.name}"
   }
 }
