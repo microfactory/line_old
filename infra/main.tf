@@ -25,11 +25,14 @@ data "template_file" "env" {
     "LINE_AWS_ACCESS_KEY_ID" = "${aws_iam_access_key.runtime.id}"
     "LINE_AWS_SECRET_ACCESS_KEY" = "${aws_iam_access_key.runtime.secret}"
 
+    "LINE_ALLOC_TTL" = "30"
+
     "LINE_SCHEDULE_QUEUE_URL" = "${aws_sqs_queue.schedule.id}"
 
     "LINE_TABLE_NAME_TASKS" = "${aws_dynamodb_table.tasks.name}"
     "LINE_TABLE_NAME_WORKERS" = "${aws_dynamodb_table.workers.name}"
     "LINE_TABLE_IDX_WORKERS_CAP" = "${lookup(aws_dynamodb_table.workers.global_secondary_index[0], "name")}"
+    // "LINE_TABLE_IDX_ALLOCS_TTL" = "${lookup(aws_dynamodb_table.allocs.global_secondary_index[0], "name")}"
     "LINE_TABLE_NAME_ALLOCS" = "${aws_dynamodb_table.allocs.name}"
   }
 }

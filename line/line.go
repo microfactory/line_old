@@ -28,11 +28,14 @@ type Conf struct {
 	AWSRegion          string `envconfig:"AWS_REGION"`
 	StripBaseMappings  int    `envconfig:"STRIP_BASE_MAPPINGS"`
 
+	AllocTTL int64 `envconfig:"ALLOC_TTL"`
+
 	ScheduleQueueURL  string `envconfig:"LINE_SCHEDULE_QUEUE_URL"`
 	TasksTableName    string `envconfig:"TABLE_NAME_TASKS"`
 	WorkersTableName  string `envconfig:"TABLE_NAME_WORKERS"`
 	WorkersCapIdxName string `envconfig:"TABLE_IDX_WORKERS_CAP"`
 	AllocsTableName   string `envconfig:"TABLE_NAME_ALLOCS"`
+	AllocsTTLIdxName  string `envconfig:"TABLE_IDX_ALLOCS_TTL"`
 }
 
 //Handler describes a Lambda handler that matches a specific suffic

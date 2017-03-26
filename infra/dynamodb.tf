@@ -2,7 +2,13 @@ resource "aws_dynamodb_table" "workers" {
   name = "${data.template_file.p.rendered}-workers"
   read_capacity = 1
   write_capacity = 1
-  hash_key = "wrk"
+  hash_key = "pool"
+  range_key = "wrk"
+
+  attribute {
+    name = "pool"
+    type = "S"
+  }
 
   attribute {
     name = "wrk"
@@ -16,12 +22,11 @@ resource "aws_dynamodb_table" "workers" {
 
   global_secondary_index {
     name               = "cap_idx"
-    hash_key           = "wrk"
+    hash_key           = "pool"
     range_key          = "cap"
-    projection_type    = "INCLUDE"
+    projection_type    = "KEYS_ONLY"
     write_capacity     = 1
     read_capacity      = 1
-    non_key_attributes = ["cap"]
   }
 }
 
@@ -54,4 +59,22 @@ resource "aws_dynamodb_table" "allocs" {
     type = "S"
   }
 
+  attribute {
+    name = "pool"
+    type = "S"
+  }
+
+  attribute {
+    name = "ttl"
+    type = "N"
+  }
+
+  global_secondary_index {
+    name               = "ttl_idx"
+    hash_key           = "pool"
+    range_key          = "ttl"
+    projection_type    = "KEYS_ONLY"
+    write_capacity     = 1
+    read_capacity      = 1
+  }
 }

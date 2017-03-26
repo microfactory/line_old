@@ -11,17 +11,14 @@ import (
 
 //TaskPK describes the task's primary key in the base table
 type TaskPK struct {
-	ProjectID string `dynamodbav:"prj"` //Base Partition Key
-	TaskID    string `dynamodbav:"tsk"` //Base Sort Key
+	TaskID string `dynamodbav:"tsk"`
 }
 
 //Task represents a planned execution
 type Task struct {
 	TaskPK
-	PoolID        string `dynamodbav:"pool"`
-	CPUCores      int    `dynamodbav:"cpu"`
-	MemoryMB      int    `dynamodbav:"mem"`
-	ActivityToken string `dynamodbav:"-"`
+	Size int    `dynamodbav:"size"`
+	Pool string `dynamodbav:"pool"`
 }
 
 var (
