@@ -1,6 +1,8 @@
 package line
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -89,8 +91,14 @@ func Schedule(conf *Conf, svc *Services, task *Task) (alloc *Alloc, err error) {
 		return nil, errors.Wrap(err, "failed to update worker capacity")
 	}
 
+	idb := make([]byte, 10)
+	_, err = rand.Read(idb)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to generate random alloc id")
+	}
+
 	alloc = &Alloc{
-		AllocPK:  AllocPK{PoolID: worker.PoolID, TaskID: task.TaskID},
+		AllocPK:  AllocPK{PoolID: worker.PoolID, AllocID: hex.EncodeToString(idb)},
 		Size:     task.Size,
 		TTL:      time.Now().Unix() + conf.AllocTTL,
 		WorkerID: worker.WorkerID,

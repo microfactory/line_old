@@ -10,8 +10,8 @@ import (
 
 //AllocPK describes the alloc's primary key in the base table
 type AllocPK struct {
-	PoolID string `dynamodbav:"pool"`
-	TaskID string `dynamodbav:"tsk"`
+	PoolID  string `dynamodbav:"pool"`
+	AllocID string `dynamodbav:"alloc"`
 }
 
 //Alloc represents a planned execution

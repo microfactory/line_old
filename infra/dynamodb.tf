@@ -47,7 +47,7 @@ resource "aws_dynamodb_table" "allocs" {
   read_capacity = 1
   write_capacity = 1
   hash_key = "pool"
-  range_key = "tsk"
+  range_key = "alloc"
 
   attribute {
     name = "pool"
@@ -55,7 +55,7 @@ resource "aws_dynamodb_table" "allocs" {
   }
 
   attribute {
-    name = "tsk"
+    name = "alloc"
     type = "S"
   }
 

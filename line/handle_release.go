@@ -11,8 +11,10 @@ import (
 	"go.uber.org/zap"
 )
 
-//HandleRelease is a Lambda handler that periodically queries a pools expired allocations and releases the capacity back to the worker table
+//HandleRelease is a Lambda handler that periodically queries a pool's expired allocations and releases the capacity back to the worker table
 func HandleRelease(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}, err error) {
+
+	//@TODO do for each pool, concurrently
 
 	condAttr, err := dynamodbattribute.MarshalMap(Alloc{
 		AllocPK: AllocPK{PoolID: "default"}, //@TODO do for each pool
@@ -59,6 +61,29 @@ func HandleRelease(conf *Conf, svc *Services, ev json.RawMessage) (res interface
 			continue
 		}
 
+		apk, err := dynamodbattribute.MarshalMap(alloc.AllocPK)
+		if err != nil {
+			svc.Logs.Error("failed to marshal worker pk", zap.Error(err))
+			continue
+		}
+
+		//@TODO place back onto schedule queue unless the result field is set
+		// fetch task back and place on schedule queue
+		// if _, err = svc.SQS.SendMessage(&sqs.SendMessageInput{
+		// 	QueueUrl: aws.String(conf.ScheduleQueueURL),
+		// }); err != nil {
+		// 	svc.Logs.Error("failed to re-send task to scheduling queue", zap.Error(err))
+		// 	continue
+		// }
+
+		if _, err = svc.DB.DeleteItem(&dynamodb.DeleteItemInput{
+			TableName: aws.String(conf.AllocsTableName),
+			Key:       apk,
+		}); err != nil {
+			svc.Logs.Error("failed to delete allocation, may never release", zap.Error(err), zap.String("double_release", alloc.WorkerID))
+			continue
+		}
+
 		if _, err := svc.DB.UpdateItem(&dynamodb.UpdateItemInput{
 			TableName:        aws.String(conf.WorkersTableName),
 			Key:              wpk,
@@ -67,21 +92,8 @@ func HandleRelease(conf *Conf, svc *Services, ev json.RawMessage) (res interface
 				":allocSize": item["size"],
 			},
 		}); err != nil {
+			//@TODO worker may have been removed, due do worker ttl or otherwise
 			svc.Logs.Error("failed to release capacity back to worker", zap.Error(err))
-			continue
-		}
-
-		apk, err := dynamodbattribute.MarshalMap(alloc.AllocPK)
-		if err != nil {
-			svc.Logs.Error("failed to marshal worker pk", zap.Error(err))
-			continue
-		}
-
-		if _, err = svc.DB.DeleteItem(&dynamodb.DeleteItemInput{
-			TableName: aws.String(conf.AllocsTableName),
-			Key:       apk,
-		}); err != nil {
-			svc.Logs.Error("failed to delete allocation, double release imminent", zap.Error(err), zap.String("double_release", alloc.WorkerID))
 			continue
 		}
 	}

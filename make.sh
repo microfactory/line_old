@@ -18,6 +18,7 @@ function run_work { #test our worker logic
 
 function run_test { #test our scheduling reactor
 	echo "--> testing..."
+	export TEST_ENDPOINT=$(terraform output endpoint)
 	export $(terraform output env | tr -d ' '); go test -v
 }
 
