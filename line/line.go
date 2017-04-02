@@ -29,9 +29,12 @@ type Conf struct {
 	StripBaseMappings  int    `envconfig:"STRIP_BASE_MAPPINGS"`
 
 	AllocTTL int64 `envconfig:"ALLOC_TTL"`
+	MaxRetry int   `envconfig:"MAX_RETRY"`
 
-	ScheduleQueueURL  string `envconfig:"LINE_SCHEDULE_QUEUE_URL"`
-	TasksTableName    string `envconfig:"TABLE_NAME_TASKS"`
+	ScheduleQueueURL   string `envconfig:"SCHEDULE_QUEUE_URL"`
+	ScheduleDLQueueURL string `envconfig:"SCHEDULE_DLQUEUE_URL"`
+
+	ReplicasTableName string `envconfig:"TABLE_NAME_REPLICAS"`
 	WorkersTableName  string `envconfig:"TABLE_NAME_WORKERS"`
 	WorkersCapIdxName string `envconfig:"TABLE_IDX_WORKERS_CAP"`
 	AllocsTableName   string `envconfig:"TABLE_NAME_ALLOCS"`

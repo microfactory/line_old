@@ -17,9 +17,9 @@ type AllocPK struct {
 //Alloc represents a planned execution
 type Alloc struct {
 	AllocPK
-	Size     int    `dynamodbav:"size"`
 	TTL      int64  `dynamodbav:"ttl"`
 	WorkerID string `dynamodbav:"wrk"`
+	Eval     *Eval  `dynamodbav:"eval"`
 }
 
 var (

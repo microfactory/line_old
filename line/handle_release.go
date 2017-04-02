@@ -2,11 +2,13 @@ package line
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -50,8 +52,15 @@ func HandleRelease(conf *Conf, svc *Services, ev json.RawMessage) (res interface
 			continue
 		}
 
+		svc.Logs.Info("releasing alloc", zap.String("alloc", fmt.Sprintf("%+v", alloc)), zap.String("item", fmt.Sprintf("%+v", item)))
+
 		if alloc.WorkerID == "" {
 			svc.Logs.Error("allocation has no worker field")
+			continue
+		}
+
+		if alloc.Eval == nil {
+			svc.Logs.Error("allocation has no eval")
 			continue
 		}
 
@@ -67,14 +76,35 @@ func HandleRelease(conf *Conf, svc *Services, ev json.RawMessage) (res interface
 			continue
 		}
 
-		//@TODO place back onto schedule queue unless the result field is set
-		// fetch task back and place on schedule queue
-		// if _, err = svc.SQS.SendMessage(&sqs.SendMessageInput{
-		// 	QueueUrl: aws.String(conf.ScheduleQueueURL),
-		// }); err != nil {
-		// 	svc.Logs.Error("failed to re-send task to scheduling queue", zap.Error(err))
-		// 	continue
-		// }
+		allocSize, err := dynamodbattribute.Marshal(alloc.Eval.Size)
+		if err != nil {
+			svc.Logs.Error("failed to marshal alloc size", zap.Error(err))
+			continue
+		}
+
+		evalMsg, err := json.Marshal(alloc.Eval)
+		if err != nil {
+			svc.Logs.Error("failed to marshal eval msg", zap.Error(err))
+			continue
+		}
+
+		if alloc.Eval.Retry >= conf.MaxRetry {
+			if _, err = svc.SQS.SendMessage(&sqs.SendMessageInput{
+				QueueUrl:    aws.String(conf.ScheduleDLQueueURL),
+				MessageBody: aws.String(string(evalMsg)),
+			}); err != nil {
+				svc.Logs.Error("failed to retry eval on dead letter queue", zap.Error(err))
+				continue
+			}
+		} else {
+			if _, err = svc.SQS.SendMessage(&sqs.SendMessageInput{
+				QueueUrl:    aws.String(conf.ScheduleQueueURL),
+				MessageBody: aws.String(string(evalMsg)),
+			}); err != nil {
+				svc.Logs.Error("failed to retry eval on scheduling queue", zap.Error(err))
+				continue
+			}
+		}
 
 		if _, err = svc.DB.DeleteItem(&dynamodb.DeleteItemInput{
 			TableName: aws.String(conf.AllocsTableName),
@@ -89,7 +119,7 @@ func HandleRelease(conf *Conf, svc *Services, ev json.RawMessage) (res interface
 			Key:              wpk,
 			UpdateExpression: aws.String(`SET cap = cap + :allocSize`),
 			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-				":allocSize": item["size"],
+				":allocSize": allocSize,
 			},
 		}); err != nil {
 			//@TODO worker may have been removed, due do worker ttl or otherwise

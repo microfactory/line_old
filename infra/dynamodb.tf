@@ -1,3 +1,21 @@
+resource "aws_dynamodb_table" "replicas" {
+  name = "${data.template_file.p.rendered}-replicas"
+  read_capacity = 1
+  write_capacity = 1
+  hash_key = "set"
+  range_key = "pwrk"
+
+  attribute {
+    name = "pwrk" //pool:worker
+    type = "S"
+  }
+
+  attribute {
+    name = "set"  //dataset
+    type = "S"
+  }
+}
+
 resource "aws_dynamodb_table" "workers" {
   name = "${data.template_file.p.rendered}-workers"
   read_capacity = 1
@@ -30,18 +48,6 @@ resource "aws_dynamodb_table" "workers" {
   }
 }
 
-resource "aws_dynamodb_table" "tasks" {
-  name = "${data.template_file.p.rendered}-tasks"
-  read_capacity = 1
-  write_capacity = 1
-  hash_key = "tsk"
-
-  attribute {
-    name = "tsk"
-    type = "S"
-  }
-}
-
 resource "aws_dynamodb_table" "allocs" {
   name = "${data.template_file.p.rendered}-allocs"
   read_capacity = 1
@@ -68,6 +74,6 @@ resource "aws_dynamodb_table" "allocs" {
     name               = "ttl_idx"
     range_key          = "ttl"
     projection_type    = "INCLUDE"
-    non_key_attributes = ["wrk", "size"]
+    non_key_attributes = ["wrk", "eval"]
   }
 }

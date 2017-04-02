@@ -18,15 +18,19 @@ import (
 )
 
 //Schedule will try to query the workers table for available room and conditionally update their capacity if it fits.
-func Schedule(conf *Conf, svc *Services, task *Task) (alloc *Alloc, err error) {
+func Schedule(conf *Conf, svc *Services, eval *Eval) (alloc *Alloc, err error) {
 
-	//query our secondary index for workers with capacity of at least the size of the task we require. @TODO apply conditional filters on results for additional selection
-	taskattr, err := dynamodbattribute.MarshalMap(task)
+	// Step 1: LOCALITY - Find all workers that have a replica and store the zones these replicas are in. If no replicas are found, scheduling will fail
+
+	// Step 2: CAPACITY - find workers with enough capacity that are near these replicas. Prefferably on worker that has the replica, if not a worker in a zone nearby.
+
+	//query our secondary index for workers with capacity of at least the size of the eval we require. @TODO apply conditional filters on results for additional selection
+	evalattr, err := dynamodbattribute.MarshalMap(eval)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to marshal task")
+		return nil, errors.Wrap(err, "failed to marshal eval")
 	}
 
-	svc.Logs.Info("querying workers for", zap.String("t", fmt.Sprintf("%+v", taskattr)))
+	svc.Logs.Info("querying workers for", zap.String("t", fmt.Sprintf("%+v", evalattr)))
 
 	//query workers with enough capacity at this point-in-time
 	var qout *dynamodb.QueryOutput
@@ -34,14 +38,14 @@ func Schedule(conf *Conf, svc *Services, task *Task) (alloc *Alloc, err error) {
 		TableName: aws.String(conf.WorkersTableName),
 		IndexName: aws.String(conf.WorkersCapIdxName),
 		Limit:     aws.Int64(10),
-		KeyConditionExpression: aws.String("#pool = :poolID AND #cap >= :taskSize"),
+		KeyConditionExpression: aws.String("#pool = :poolID AND #cap >= :evalSize"),
 		ExpressionAttributeNames: map[string]*string{
 			"#pool": aws.String("pool"),
 			"#cap":  aws.String("cap"),
 		},
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":poolID":   taskattr["pool"],
-			":taskSize": taskattr["size"],
+			":poolID":   evalattr["pool"],
+			":evalSize": evalattr["size"],
 		},
 	}); err != nil {
 		return nil, errors.Wrap(err, "failed to query workers")
@@ -85,7 +89,7 @@ func Schedule(conf *Conf, svc *Services, task *Task) (alloc *Alloc, err error) {
 		UpdateExpression:    aws.String(`SET cap = cap - :claim`),
 		ConditionExpression: aws.String("cap >= :claim"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":claim": taskattr["size"],
+			":claim": evalattr["size"],
 		},
 	}); err != nil {
 		return nil, errors.Wrap(err, "failed to update worker capacity")
@@ -97,18 +101,19 @@ func Schedule(conf *Conf, svc *Services, task *Task) (alloc *Alloc, err error) {
 		return nil, errors.Wrap(err, "failed to generate random alloc id")
 	}
 
+	eval.Retry = eval.Retry + 1
 	alloc = &Alloc{
 		AllocPK:  AllocPK{PoolID: worker.PoolID, AllocID: hex.EncodeToString(idb)},
-		Size:     task.Size,
 		TTL:      time.Now().Unix() + conf.AllocTTL,
 		WorkerID: worker.WorkerID,
+		Eval:     eval,
 	}
 
 	return alloc, nil
 }
 
-//DeleteTaskMsg removes a message from the schedule queue
-func DeleteTaskMsg(conf *Conf, svc *Services, msg *sqs.Message) (err error) {
+//DeleteEvalMsg removes a message from the schedule queue
+func DeleteEvalMsg(conf *Conf, svc *Services, msg *sqs.Message) (err error) {
 	if _, err = svc.SQS.DeleteMessage(&sqs.DeleteMessageInput{
 		QueueUrl:      aws.String(conf.ScheduleQueueURL),
 		ReceiptHandle: msg.ReceiptHandle,
@@ -136,33 +141,24 @@ func HandleAlloc(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}
 		for _, msg := range out.Messages {
 			svc.Logs.Info("received schedule msg", zap.String("msg", msg.String()))
 
-			task := &Task{}
-			err = json.Unmarshal([]byte(aws.StringValue(msg.Body)), task)
+			eval := &Eval{}
+			err = json.Unmarshal([]byte(aws.StringValue(msg.Body)), eval)
 			if err != nil {
-				svc.Logs.Error("failed to unmarshal task", zap.Error(err))
+				svc.Logs.Error("failed to unmarshal eval", zap.Error(err))
 				continue
 			}
 
-			if task.TaskID == "" {
-				svc.Logs.Error("received task without an id")
-				err = DeleteTaskMsg(conf, svc, msg)
-				if err != nil {
-					svc.Logs.Error("failed to delete task msg", zap.Error(err))
-					continue
-				}
+			if eval.Size < 1 {
+				eval.Size = 1
 			}
 
-			if task.Size < 1 {
-				task.Size = 1
+			if eval.Pool == "" {
+				eval.Pool = "default"
 			}
 
-			if task.Pool == "" {
-				task.Pool = "default"
-			}
-
-			alloc, err := Schedule(conf, svc, task)
+			alloc, err := Schedule(conf, svc, eval)
 			if err != nil {
-				svc.Logs.Error("task cannot be scheduled", zap.Error(err))
+				svc.Logs.Error("eval cannot be scheduled", zap.Error(err))
 				continue
 			}
 
@@ -172,11 +168,9 @@ func HandleAlloc(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}
 				continue
 			}
 
-			//@TODO update the task status somewhere?
-
-			err = DeleteTaskMsg(conf, svc, msg)
+			err = DeleteEvalMsg(conf, svc, msg)
 			if err != nil {
-				svc.Logs.Error("failed to delete task msg", zap.Error(err))
+				svc.Logs.Error("failed to delete eval msg", zap.Error(err))
 				continue
 			}
 		}

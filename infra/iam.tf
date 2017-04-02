@@ -92,7 +92,7 @@ data "aws_iam_policy_document" "runtime" {
     resources = [
       "${aws_dynamodb_table.workers.arn}*",
       "${aws_dynamodb_table.allocs.arn}*",
-      "${aws_dynamodb_table.tasks.arn}*",
+      "${aws_dynamodb_table.replicas.arn}*",
     ]
   }
 }
