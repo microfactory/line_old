@@ -34,6 +34,7 @@ type Conf struct {
 	ScheduleQueueURL   string `envconfig:"SCHEDULE_QUEUE_URL"`
 	ScheduleDLQueueURL string `envconfig:"SCHEDULE_DLQUEUE_URL"`
 
+	PoolsTableName    string `envconfig:"TABLE_NAME_POOLS"`
 	ReplicasTableName string `envconfig:"TABLE_NAME_REPLICAS"`
 	WorkersTableName  string `envconfig:"TABLE_NAME_WORKERS"`
 	WorkersCapIdxName string `envconfig:"TABLE_IDX_WORKERS_CAP"`

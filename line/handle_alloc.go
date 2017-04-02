@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -17,14 +18,56 @@ import (
 	"github.com/pkg/errors"
 )
 
+//FindReplicas returns locality information for an evaluation
+func FindReplicas(conf *Conf, svc *Services, eval *Eval) ([]*Replica, error) {
+	evalattr, err := dynamodbattribute.MarshalMap(eval)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to marshal eval")
+	}
+
+	// Step 1: LOCALITY - Find all workers that have replica and store the zones these replicas are in. If no replicas are found, scheduling will fail
+	replicas := []*Replica{}
+	if eval.Dataset != "" {
+		locqin := &dynamodb.QueryInput{
+			TableName: aws.String(conf.ReplicasTableName),
+			Limit:     aws.Int64(10),
+			KeyConditionExpression: aws.String("#set = :setID"),
+			ExpressionAttributeNames: map[string]*string{
+				"#set": aws.String("set"),
+			},
+			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+				":setID": evalattr["set"],
+			},
+		}
+
+		if eval.Pool != "" {
+			locqin.KeyConditionExpression = aws.String("#set = :setID AND begins_with (#pwrk, :poolID)")
+			locqin.ExpressionAttributeNames["#set"] = aws.String("pwrk")
+			locqin.ExpressionAttributeValues[":poolID"] = evalattr["pool"]
+		}
+
+		var locq *dynamodb.QueryOutput
+		if locq, err = svc.DB.Query(locqin); err != nil {
+			return nil, errors.Wrap(err, "failed to query replicas")
+		}
+
+		for _, item := range locq.Items {
+			replica := &Replica{}
+			err := dynamodbattribute.UnmarshalMap(item, replica)
+			if err != nil {
+				svc.Logs.Error("failed to unmarshal replica item", zap.Error(err))
+				continue
+			}
+
+			replicas = append(replicas, replica)
+		}
+	}
+
+	return replicas, nil
+}
+
 //Schedule will try to query the workers table for available room and conditionally update their capacity if it fits.
-func Schedule(conf *Conf, svc *Services, eval *Eval) (alloc *Alloc, err error) {
-
-	// Step 1: LOCALITY - Find all workers that have a replica and store the zones these replicas are in. If no replicas are found, scheduling will fail
-
-	// Step 2: CAPACITY - find workers with enough capacity that are near these replicas. Prefferably on worker that has the replica, if not a worker in a zone nearby.
-
-	//query our secondary index for workers with capacity of at least the size of the eval we require. @TODO apply conditional filters on results for additional selection
+func Schedule(conf *Conf, svc *Services, eval *Eval, replicas []*Replica) (alloc *Alloc, err error) {
 	evalattr, err := dynamodbattribute.MarshalMap(eval)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to marshal eval")
@@ -32,9 +75,11 @@ func Schedule(conf *Conf, svc *Services, eval *Eval) (alloc *Alloc, err error) {
 
 	svc.Logs.Info("querying workers for", zap.String("t", fmt.Sprintf("%+v", evalattr)))
 
+	// Step 2: CAPACITY - find workers with enough capacity in a given pool.
+
 	//query workers with enough capacity at this point-in-time
-	var qout *dynamodb.QueryOutput
-	if qout, err = svc.DB.Query(&dynamodb.QueryInput{
+	var capq *dynamodb.QueryOutput
+	if capq, err = svc.DB.Query(&dynamodb.QueryInput{
 		TableName: aws.String(conf.WorkersTableName),
 		IndexName: aws.String(conf.WorkersCapIdxName),
 		Limit:     aws.Int64(10),
@@ -53,7 +98,7 @@ func Schedule(conf *Conf, svc *Services, eval *Eval) (alloc *Alloc, err error) {
 
 	//decode dynamo items into candidate workers
 	var candidates []*Worker
-	for _, item := range qout.Items {
+	for _, item := range capq.Items {
 		cand := &Worker{}
 		err := dynamodbattribute.UnmarshalMap(item, cand)
 		if err != nil {
@@ -69,6 +114,12 @@ func Schedule(conf *Conf, svc *Services, eval *Eval) (alloc *Alloc, err error) {
 	sort.Slice(candidates, func(i, j int) bool {
 		return candidates[i].Capacity >= candidates[j].Capacity
 	})
+
+	//if there is some locality information available, we would like to choose a worker with capacity near the data
+	if len(replicas) > 0 {
+		//@TODO if workers with a replica have capacity, put these on top
+		//else put workers in the same zone on top
+	}
 
 	//if we have no candidates to begin we return an error en hope it will be better in the future
 	if len(candidates) < 1 {
@@ -126,7 +177,6 @@ func DeleteEvalMsg(conf *Conf, svc *Services, msg *sqs.Message) (err error) {
 //HandleAlloc is a Lambda handler that periodically reads from the scheduling queue and queries the workers table for available capacity. If the capacity can be claimed an allocation is created.
 func HandleAlloc(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}, err error) {
 
-	//@TODO do for each pool (concurrently)
 	for {
 		var out *sqs.ReceiveMessageOutput
 		if out, err = svc.SQS.ReceiveMessage(&sqs.ReceiveMessageInput{
@@ -152,11 +202,41 @@ func HandleAlloc(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}
 				eval.Size = 1
 			}
 
-			if eval.Pool == "" {
-				eval.Pool = "default"
+			//if the eval requires specific dataset it must be present on a given pool
+			replicas := []*Replica{}
+			if eval.Dataset != "" {
+				replicas, err = FindReplicas(conf, svc, eval)
+				if err != nil {
+					svc.Logs.Error("failed to find replicas", zap.Error(err))
+					continue
+				}
+
+				//if a dataset was found but no replicas exist in any pool, we wont be able to schedule (right now)
+				if len(replicas) < 1 {
+					svc.Logs.Error("no-replicas found for dataset and pool requirements", zap.String("dataset", eval.Dataset), zap.String("pool", eval.Pool))
+					continue
+				}
 			}
 
-			alloc, err := Schedule(conf, svc, eval)
+			//if there is no explicity pool, we might be able to infer from locality information, i.e pools that hold a replica
+			if eval.Pool == "" && len(replicas) > 0 {
+				//@TODO more sophisticated selection between pools instead of selecting the first
+				parts := strings.Split(replicas[0].PoolWorkerID, ":")
+				if len(parts) != 0 {
+					svc.Logs.Error("failed to infer pool from replica, invalid pworker field", zap.String("pwrk", replicas[0].PoolWorkerID))
+				}
+
+				eval.Pool = parts[0]
+			}
+
+			//at this point we should have some sort of pool
+			if eval.Pool == "" {
+				svc.Logs.Error("eval has no specific pool or was unable to infer from dataset")
+				continue
+			}
+
+			//find capacity in the pool
+			alloc, err := Schedule(conf, svc, eval, replicas)
 			if err != nil {
 				svc.Logs.Error("eval cannot be scheduled", zap.Error(err))
 				continue
@@ -175,5 +255,4 @@ func HandleAlloc(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}
 			}
 		}
 	}
-
 }

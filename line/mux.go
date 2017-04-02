@@ -1,33 +1,199 @@
 package line
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/microfactory/line/line/client"
+	"github.com/pkg/errors"
 	"github.com/pressly/chi"
 )
 
-//FmtQueueURL is able to "predict" an sqs queue url from configurations
-func FmtQueueURL(conf *Conf, poolID string) string {
-	return fmt.Sprintf("https://sqs.%s.amazonaws.com/%s/%s-%s", conf.AWSRegion, conf.AWSAccountID, conf.Deployment, poolID)
+//FmtWorkerQueueName will format a sqs queue name consistently
+func FmtWorkerQueueName(conf *Conf, poolID, workerID string) string {
+	return fmt.Sprintf("%s-%s-%s", conf.Deployment, poolID, workerID)
+}
+
+//FmtWorkerQueueURL is able to "predict" an sqs queue url from configurations
+func FmtWorkerQueueURL(conf *Conf, poolID, workerID string) string {
+	return fmt.Sprintf("https://sqs.%s.amazonaws.com/%s/%s", conf.AWSRegion, conf.AWSAccountID, FmtWorkerQueueName(conf, poolID, workerID))
 }
 
 //Mux sets up the HTTP multiplexer
 func Mux(conf *Conf, svc *Services) http.Handler {
 	r := chi.NewRouter()
 
+	//
+	// Create Pool
+	//
+	r.Post("/CreatePool", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
+		input := &client.CreatePoolInput{}
+		err = decodeInput(r.Body, input)
+		if err != nil {
+			return err
+		}
+
+		idb := make([]byte, 10)
+		_, err = rand.Read(idb)
+		if err != nil {
+			return errors.Wrap(err, "failed to generate random id bytes")
+		}
+
+		pool := &Pool{
+			PoolPK: PoolPK{hex.EncodeToString(idb)},
+		}
+
+		err = PutNewPool(conf, svc.DB, pool)
+		if err != nil {
+			return errors.Wrap(err, "failed to put new pool")
+		}
+
+		output := &client.CreatePoolOutput{
+			PoolID: pool.PoolID,
+		}
+
+		return encodeOutput(w, output)
+	}))
+
+	//
+	// Create Worker
+	//
+	r.Post("/CreateWorker", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
+		input := &client.CreateWorkerInput{}
+		err = decodeInput(r.Body, input)
+		if err != nil {
+			return err
+		}
+
+		pool, err := GetPool(conf, svc.DB, PoolPK{input.PoolID})
+		if err != nil {
+			return errors.Wrap(err, "failed to get pool")
+		}
+
+		idb := make([]byte, 10)
+		_, err = rand.Read(idb)
+		if err != nil {
+			return errors.Wrap(err, "failed to generate random id bytes")
+		}
+
+		workerID := hex.EncodeToString(idb)
+		var qout *sqs.CreateQueueOutput
+		if qout, err = svc.SQS.CreateQueue(&sqs.CreateQueueInput{
+			QueueName: aws.String(FmtWorkerQueueName(conf, pool.PoolID, workerID)),
+		}); err != nil {
+			return errors.Wrap(err, "failed to create queue")
+		}
+
+		worker := &Worker{
+			WorkerPK: WorkerPK{
+				WorkerID: workerID,
+				PoolID:   pool.PoolID,
+			},
+			QueueURL: aws.StringValue(qout.QueueUrl),
+			Capacity: input.Capacity,
+		}
+
+		err = PutNewWorker(conf, svc.DB, worker)
+		if err != nil {
+			return errors.Wrap(err, "failed to put worker")
+		}
+
+		output := &client.CreateWorkerOutput{
+			PoolID:   worker.PoolID,
+			WorkerID: worker.WorkerID,
+			QueueURL: worker.QueueURL,
+			Capacity: worker.Capacity,
+		}
+
+		return encodeOutput(w, output)
+	}))
+
+	//
+	// Delete Worker
+	//
+	r.Post("/DeleteWorker", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
+		input := &client.DeleteWorkerInput{}
+		err = decodeInput(r.Body, input)
+		if err != nil {
+			return err
+		}
+
+		if _, err = svc.SQS.DeleteQueue(&sqs.DeleteQueueInput{
+			QueueUrl: aws.String(FmtWorkerQueueURL(conf, input.PoolID, input.WorkerID)),
+		}); err != nil {
+			return errors.Wrap(err, "failed to remove queue")
+		}
+
+		if err = DeleteWorker(conf, svc.DB, WorkerPK{
+			PoolID:   input.PoolID,
+			WorkerID: input.WorkerID,
+		}); err != nil {
+			return errors.Wrap(err, "failed to delete worker")
+		}
+
+		return encodeOutput(w, &client.DeleteWorkerOutput{})
+	}))
+
+	//
+	// Delete Pool
+	//
+	r.Post("/DeletePool", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
+		input := &client.DeletePoolInput{}
+		err = decodeInput(r.Body, input)
+		if err != nil {
+			return err
+		}
+
+		if err = DeletePool(conf, svc.DB, PoolPK{
+			PoolID: input.PoolID,
+		}); err != nil {
+			return errors.Wrap(err, "failed to delete worker")
+		}
+
+		return encodeOutput(w, &client.DeletePoolOutput{})
+	}))
+
+	r.Post("/SendHeartbeat", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"message": "send heartbeat"}`)
+	})
+
 	r.NotFound(notFoundHandler)
 	r.MethodNotAllowed(methodNotAllowedHandler)
 	return r
 }
 
+func decodeInput(r io.Reader, in interface{}) (err error) {
+	dec := json.NewDecoder(r)
+	err = dec.Decode(in)
+	if err != nil {
+		return errors.Wrap(err, "failed to decode input")
+	}
+
+	return nil
+}
+
+func encodeOutput(w io.Writer, out interface{}) (err error) {
+	enc := json.NewEncoder(w)
+	err = enc.Encode(out)
+	if err != nil {
+		return errors.Wrap(err, "failed to encode output")
+	}
+	return nil
+}
+
 func errh(fn func(w http.ResponseWriter, r *http.Request) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := fn(w, r); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
 			enc := json.NewEncoder(w)
 			err = enc.Encode(struct {
-				Message string
+				Message string `json:"message"`
 			}{err.Error()})
 			if err != nil {
 				fmt.Fprintln(w, `{"message": "failed to encode error"}`)

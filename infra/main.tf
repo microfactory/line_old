@@ -31,6 +31,7 @@ data "template_file" "env" {
     "LINE_SCHEDULE_QUEUE_URL" = "${aws_sqs_queue.schedule.id}"
     "LINE_SCHEDULE_DLQUEUE_URL" = "${aws_sqs_queue.schedule_dlq.id}"
 
+    "LINE_TABLE_NAME_POOLS" = "${aws_dynamodb_table.pools.name}"
     "LINE_TABLE_NAME_REPLICAS" = "${aws_dynamodb_table.replicas.name}"
     "LINE_TABLE_NAME_WORKERS" = "${aws_dynamodb_table.workers.name}"
     "LINE_TABLE_IDX_WORKERS_CAP" = "${lookup(aws_dynamodb_table.workers.global_secondary_index[0], "name")}"
