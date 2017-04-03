@@ -188,10 +188,9 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 		}
 
 		//@TODO delete all workers
-		//@TODO delete replicas; they are used before a pool is determined and can thus inlfuence scheduling if not removed
 
-		//@NOTE: remaining allocations will eventually be removed by dynamo ttl
-		//@NOTE: remaining replicas will eventually be removed by dynamo ttl
+		//@NOTE: remaining pool allocations will eventually be removed by dynamo ttl
+		//@NOTE: remaining pool replicas will eventually be removed by dynamo ttl
 
 		return encodeOutput(w, &client.DeletePoolOutput{})
 	}))
@@ -216,7 +215,7 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 					PoolID:    pool.PoolID,
 					ReplicaID: FmtReplicaID(datasetID, input.WorkerID),
 				},
-				TTL: now.Unix() + conf.AllocTTL,
+				TTL: now.Unix() + conf.ReplicaTTL,
 			}
 
 			if err = PutReplica(conf, svc.DB, replica); err != nil {
@@ -224,7 +223,17 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 			}
 		}
 
-		//@TODO update alloc ttl
+		//update allocs, moving the ttl futher into the future
+		for _, allocID := range input.Allocs {
+			apk := AllocPK{
+				PoolID:  pool.PoolID,
+				AllocID: allocID,
+			}
+
+			if err = UpdateAllocTTL(conf, svc.DB, now.Unix()+conf.AllocTTL, apk); err != nil {
+				return errors.Wrapf(err, "failed to update alloc ttl: %+v", allocID)
+			}
+		}
 
 		return encodeOutput(w, &client.SendHeartbeatOutput{})
 	}))

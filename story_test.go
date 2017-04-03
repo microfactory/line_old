@@ -96,9 +96,17 @@ func TestUserStory_1(t *testing.T) {
 		}
 	}
 
-	assert(t, len(allocs) > 0, "expected to have received some allocs", allocs)
+	assert(t, (len(allocs) == 1), "expected to have received one alloc, got: %+v", allocs)
 
-	//@TODO send heartbeat with the allocs
+	_, err = c.SendHeartbeat(&client.SendHeartbeatInput{
+		PoolID:   pool.PoolID,
+		WorkerID: worker.WorkerID,
+		Datasets: []string{"d1"},
+		Allocs:   []string{allocs[0].AllocID},
+	})
+	ok(t, err)
+
+	//@TODO how about crashing workers(?)
 
 	_, err = c.DeleteWorker(&client.DeleteWorkerInput{
 		PoolID:   pool.PoolID,

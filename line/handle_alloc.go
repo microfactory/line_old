@@ -121,6 +121,8 @@ func Schedule(conf *Conf, svc *Services, eval *Eval, pool *Pool, replicas []*Rep
 		return candidates[i].Capacity >= candidates[j].Capacity
 	})
 
+	//@TODO filter candidates with a ttl in the future
+
 	//if there is some locality information available, we would like to choose a worker with capacity near the data
 	if len(replicas) > 0 {
 		//@TODO if workers with a replica have capacity, put these on top

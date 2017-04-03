@@ -39,7 +39,7 @@ func PutNewAlloc(conf *Conf, db DB, alloc *Alloc) (err error) {
 
 	if _, err = db.PutItem(&dynamodb.PutItemInput{
 		TableName:           aws.String(conf.AllocsTableName),
-		ConditionExpression: aws.String("attribute_not_exists(tsk)"),
+		ConditionExpression: aws.String("attribute_not_exists(alloc)"),
 		Item:                item,
 	}); err != nil {
 		aerr, ok := err.(awserr.Error)
@@ -48,6 +48,41 @@ func PutNewAlloc(conf *Conf, db DB, alloc *Alloc) (err error) {
 		}
 
 		return ErrAllocExists
+	}
+
+	return nil
+}
+
+//UpdateAllocTTL under the condition that it exists
+func UpdateAllocTTL(conf *Conf, db DB, ttl int64, apk AllocPK) (err error) {
+	pk, err := dynamodbattribute.MarshalMap(apk)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal keys map")
+	}
+
+	ttlattr, err := dynamodbattribute.Marshal(ttl)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal new ttl")
+	}
+
+	if _, err = db.UpdateItem(&dynamodb.UpdateItemInput{
+		TableName:           aws.String(conf.AllocsTableName),
+		Key:                 pk,
+		UpdateExpression:    aws.String("SET #ttl = :ttl"),
+		ConditionExpression: aws.String("attribute_exists(alloc)"),
+		ExpressionAttributeNames: map[string]*string{
+			"#ttl": aws.String("ttl"),
+		},
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":ttl": ttlattr,
+		},
+	}); err != nil {
+		aerr, ok := err.(awserr.Error)
+		if !ok || aerr.Code() != dynamodb.ErrCodeConditionalCheckFailedException {
+			return errors.Wrap(err, "failed to update item")
+		}
+
+		return ErrAllocNotExists
 	}
 
 	return nil
