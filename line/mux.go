@@ -26,6 +26,16 @@ func FmtWorkerQueueName(conf *Conf, poolID, workerID string) string {
 	return fmt.Sprintf("%s-%s-%s", conf.Deployment, poolID, workerID)
 }
 
+//FmtPoolQueueName will format a sqs queue name consistently
+func FmtPoolQueueName(conf *Conf, poolID string) string {
+	return fmt.Sprintf("%s-%s", conf.Deployment, poolID)
+}
+
+//FmtPoolQueueURL is able to "predict" an sqs queue url from configurations
+func FmtPoolQueueURL(conf *Conf, poolID string) string {
+	return fmt.Sprintf("https://sqs.%s.amazonaws.com/%s/%s", conf.AWSRegion, conf.AWSAccountID, FmtPoolQueueName(conf, poolID))
+}
+
 //FmtWorkerQueueURL is able to "predict" an sqs queue url from configurations
 func FmtWorkerQueueURL(conf *Conf, poolID, workerID string) string {
 	return fmt.Sprintf("https://sqs.%s.amazonaws.com/%s/%s", conf.AWSRegion, conf.AWSAccountID, FmtWorkerQueueName(conf, poolID, workerID))
@@ -51,8 +61,17 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 			return errors.Wrap(err, "failed to generate random id bytes")
 		}
 
+		poolID := hex.EncodeToString(idb)
+		var qout *sqs.CreateQueueOutput
+		if qout, err = svc.SQS.CreateQueue(&sqs.CreateQueueInput{
+			QueueName: aws.String(FmtPoolQueueName(conf, poolID)),
+		}); err != nil {
+			return errors.Wrap(err, "failed to create queue")
+		}
+
 		pool := &Pool{
-			PoolPK: PoolPK{hex.EncodeToString(idb)},
+			PoolPK:   PoolPK{poolID},
+			QueueURL: aws.StringValue(qout.QueueUrl),
 		}
 
 		err = PutNewPool(conf, svc.DB, pool)
@@ -156,6 +175,12 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 			return err
 		}
 
+		if _, err = svc.SQS.DeleteQueue(&sqs.DeleteQueueInput{
+			QueueUrl: aws.String(FmtPoolQueueURL(conf, input.PoolID)),
+		}); err != nil {
+			return errors.Wrap(err, "failed to remove queue")
+		}
+
 		if err = DeletePool(conf, svc.DB, PoolPK{
 			PoolID: input.PoolID,
 		}); err != nil {
@@ -202,6 +227,33 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 		//@TODO update alloc ttl
 
 		return encodeOutput(w, &client.SendHeartbeatOutput{})
+	}))
+
+	r.Post("/ScheduleEval", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
+		input := &client.ScheduleEvalInput{}
+		err = decodeInput(r.Body, input)
+		if err != nil {
+			return err
+		}
+
+		pool, err := GetPool(conf, svc.DB, PoolPK{input.PoolID})
+		if err != nil {
+			return errors.Wrap(err, "failed to get pool")
+		}
+
+		msg, err := json.Marshal(&Eval{Size: input.Size, Dataset: input.DatasetID})
+		if err != nil {
+			return errors.Wrap(err, "failed to encode scheduling message")
+		}
+
+		if _, err := svc.SQS.SendMessage(&sqs.SendMessageInput{
+			QueueUrl:    aws.String(pool.QueueURL),
+			MessageBody: aws.String(string(msg)),
+		}); err != nil {
+			return errors.Wrap(err, "failed to send message")
+		}
+
+		return encodeOutput(w, &client.ScheduleEvalOutput{})
 	}))
 
 	r.NotFound(notFoundHandler)

@@ -29,7 +29,6 @@ data "template_file" "env" {
     "LINE_ALLOC_TTL" = "30"
     "LINE_MAX_RETRY" = "3"
 
-    "LINE_SCHEDULE_QUEUE_URL" = "${aws_sqs_queue.schedule.id}"
     "LINE_SCHEDULE_DLQUEUE_URL" = "${aws_sqs_queue.schedule_dlq.id}"
 
     "LINE_TABLE_NAME_POOLS" = "${aws_dynamodb_table.pools.name}"

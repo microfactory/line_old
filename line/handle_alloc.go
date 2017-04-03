@@ -14,12 +14,18 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/microfactory/line/line/client"
 	"github.com/pkg/errors"
 )
 
 //FindReplicas returns locality information for an evaluation
-func FindReplicas(conf *Conf, svc *Services, eval *Eval) ([]*Replica, error) {
+func FindReplicas(conf *Conf, svc *Services, eval *Eval, pool *Pool) ([]*Replica, error) {
 	evalattr, err := dynamodbattribute.MarshalMap(eval)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to marshal eval")
+	}
+
+	poolattr, err := dynamodbattribute.MarshalMap(pool)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to marshal eval")
 	}
@@ -30,19 +36,15 @@ func FindReplicas(conf *Conf, svc *Services, eval *Eval) ([]*Replica, error) {
 		locqin := &dynamodb.QueryInput{
 			TableName: aws.String(conf.ReplicasTableName),
 			Limit:     aws.Int64(10),
-			KeyConditionExpression: aws.String("#set = :setID"),
+			KeyConditionExpression: aws.String("#pool = :poolID AND begins_with (#rpl, :datasetID)"),
 			ExpressionAttributeNames: map[string]*string{
-				"#set": aws.String("set"),
+				"#pool": aws.String("pool"),
+				"#rpl":  aws.String("rpl"),
 			},
 			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-				":setID": evalattr["set"],
+				":poolID":    poolattr["pool"],
+				":datasetID": evalattr["set"],
 			},
-		}
-
-		if eval.Pool != "" {
-			locqin.KeyConditionExpression = aws.String("#set = :setID AND begins_with (#pwrk, :poolID)")
-			locqin.ExpressionAttributeNames["#set"] = aws.String("pwrk")
-			locqin.ExpressionAttributeValues[":poolID"] = evalattr["pool"]
 		}
 
 		var locq *dynamodb.QueryOutput
@@ -66,8 +68,13 @@ func FindReplicas(conf *Conf, svc *Services, eval *Eval) ([]*Replica, error) {
 }
 
 //Schedule will try to query the workers table for available room and conditionally update their capacity if it fits.
-func Schedule(conf *Conf, svc *Services, eval *Eval, replicas []*Replica) (alloc *Alloc, err error) {
+func Schedule(conf *Conf, svc *Services, eval *Eval, pool *Pool, replicas []*Replica) (alloc *Alloc, err error) {
 	evalattr, err := dynamodbattribute.MarshalMap(eval)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to marshal eval")
+	}
+
+	poolattr, err := dynamodbattribute.MarshalMap(pool)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to marshal eval")
 	}
@@ -88,7 +95,7 @@ func Schedule(conf *Conf, svc *Services, eval *Eval, replicas []*Replica) (alloc
 			"#cap":  aws.String("cap"),
 		},
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":poolID":   evalattr["pool"],
+			":poolID":   poolattr["pool"],
 			":evalSize": evalattr["size"],
 		},
 	}); err != nil {
@@ -162,32 +169,17 @@ func Schedule(conf *Conf, svc *Services, eval *Eval, replicas []*Replica) (alloc
 	return alloc, nil
 }
 
-//DeleteEvalMsg removes a message from the schedule queue
-func DeleteEvalMsg(conf *Conf, svc *Services, msg *sqs.Message) (err error) {
-	if _, err = svc.SQS.DeleteMessage(&sqs.DeleteMessageInput{
-		QueueUrl:      aws.String(conf.ScheduleQueueURL),
-		ReceiptHandle: msg.ReceiptHandle,
-	}); err != nil {
-		return err
-	}
-	return nil
-}
-
-//HandleAlloc is a Lambda handler that periodically reads from the scheduling queue and queries the workers table for available capacity. If the capacity can be claimed an allocation is created.
-func HandleAlloc(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}, err error) {
-
-	//@TODO do for each pool (at the beginning of the call)
-	//@TODO use poolID instead of eval field
-
+//ReceiveEvals will long poll for scheduling messages on the scheduling queue of the pool
+func ReceiveEvals(conf *Conf, svc *Services, pool *Pool) (err error) {
 	for {
 		var out *sqs.ReceiveMessageOutput
 		if out, err = svc.SQS.ReceiveMessage(&sqs.ReceiveMessageInput{
-			QueueUrl:            aws.String(conf.ScheduleQueueURL),
+			QueueUrl:            aws.String(pool.QueueURL),
 			VisibilityTimeout:   aws.Int64(1),
 			MaxNumberOfMessages: aws.Int64(1),
 		}); err != nil {
 			svc.Logs.Error("failed to receive message", zap.Error(err))
-			continue
+			return
 		}
 
 		for _, msg := range out.Messages {
@@ -204,29 +196,18 @@ func HandleAlloc(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}
 				eval.Size = 1
 			}
 
-			if eval.Pool == "" {
-				svc.Logs.Error("eval didn't specify a pool to schedule on")
-				continue
-			}
-
 			//if the eval requires specific dataset we can provide locality based scheduling by finding replicas in the pool
 			replicas := []*Replica{}
 			if eval.Dataset != "" {
-				replicas, err = FindReplicas(conf, svc, eval)
+				replicas, err = FindReplicas(conf, svc, eval, pool)
 				if err != nil {
 					svc.Logs.Error("failed to find replicas", zap.Error(err))
-					continue
-				}
-
-				//if a dataset was found but no replicas exist in any pool, we wont be able to schedule (right now)
-				if len(replicas) < 1 {
-					svc.Logs.Error("no-replicas found for dataset and pool requirements", zap.String("dataset", eval.Dataset), zap.String("pool", eval.Pool))
 					continue
 				}
 			}
 
 			//find capacity in the pool
-			alloc, err := Schedule(conf, svc, eval, replicas)
+			alloc, err := Schedule(conf, svc, eval, pool, replicas)
 			if err != nil {
 				svc.Logs.Error("eval cannot be scheduled", zap.Error(err))
 				continue
@@ -238,11 +219,68 @@ func HandleAlloc(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}
 				continue
 			}
 
-			err = DeleteEvalMsg(conf, svc, msg)
+			allocPl := &client.Alloc{
+				AllocID:  alloc.AllocID,
+				PoolID:   pool.PoolID,
+				WorkerID: alloc.WorkerID,
+				//@TODO fill with information the worker needs:
+				// - RAM/CPU limits
+				// - Docker image
+				// - DatasetID/version
+				// - AllocID
+			}
+
+			allocPlMsg, err := json.Marshal(allocPl)
 			if err != nil {
+				svc.Logs.Error("failed to encode alloc message", zap.Error(err))
+				continue
+			}
+
+			if _, err = svc.SQS.SendMessage(&sqs.SendMessageInput{
+				QueueUrl:    aws.String(FmtWorkerQueueURL(conf, pool.PoolID, alloc.WorkerID)),
+				MessageBody: aws.String(string(allocPlMsg)),
+			}); err != nil {
+				svc.Logs.Error("failed to send alloc msg", zap.Error(err))
+				continue
+			}
+
+			if _, err = svc.SQS.DeleteMessage(&sqs.DeleteMessageInput{
+				QueueUrl:      aws.String(pool.QueueURL),
+				ReceiptHandle: msg.ReceiptHandle,
+			}); err != nil {
 				svc.Logs.Error("failed to delete eval msg", zap.Error(err))
 				continue
 			}
 		}
 	}
+}
+
+//HandleAlloc is a Lambda handler that periodically reads from the scheduling queue and queries the workers table for available capacity. If the capacity can be claimed an allocation is created.
+func HandleAlloc(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}, err error) {
+
+	doneCh := make(chan struct{})
+	if err = svc.DB.ScanPages(&dynamodb.ScanInput{
+		TableName: aws.String(conf.PoolsTableName),
+	},
+		func(page *dynamodb.ScanOutput, lastPage bool) bool {
+			for _, item := range page.Items {
+				pool := &Pool{}
+				err := dynamodbattribute.UnmarshalMap(item, pool)
+				if err != nil {
+					svc.Logs.Error("failed to unmarshal replica item", zap.Error(err))
+					continue
+				}
+
+				svc.Logs.Info("pool", zap.String("pool", fmt.Sprintf("%+v", pool)))
+				go ReceiveEvals(conf, svc, pool)
+			}
+			return true
+		}); err != nil {
+		return
+	}
+
+	//this will block forever while messages are being received for pools concurrently
+	<-doneCh
+
+	return ev, nil
 }

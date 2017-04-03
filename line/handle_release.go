@@ -13,10 +13,10 @@ import (
 	"go.uber.org/zap"
 )
 
-func releaseReplicas(conf *Conf, svc *Services, poolID string) (err error) {
+func releaseReplicas(conf *Conf, svc *Services, pool *Pool) (err error) {
 	condAttr, err := dynamodbattribute.MarshalMap(Replica{
 		TTL:       time.Now().Unix(),
-		ReplicaPK: ReplicaPK{PoolID: poolID},
+		ReplicaPK: ReplicaPK{PoolID: pool.PoolID},
 	})
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal replica condition")
@@ -57,9 +57,9 @@ func releaseReplicas(conf *Conf, svc *Services, poolID string) (err error) {
 	return nil
 }
 
-func releaseAllocs(conf *Conf, svc *Services, poolID string) (err error) {
+func releaseAllocs(conf *Conf, svc *Services, pool *Pool) (err error) {
 	condAttr, err := dynamodbattribute.MarshalMap(Alloc{
-		AllocPK: AllocPK{PoolID: poolID},
+		AllocPK: AllocPK{PoolID: pool.PoolID},
 		TTL:     time.Now().Unix(),
 	})
 	if err != nil {
@@ -138,7 +138,7 @@ func releaseAllocs(conf *Conf, svc *Services, poolID string) (err error) {
 			}
 		} else {
 			if _, err = svc.SQS.SendMessage(&sqs.SendMessageInput{
-				QueueUrl:    aws.String(conf.ScheduleQueueURL),
+				QueueUrl:    aws.String(pool.QueueURL),
 				MessageBody: aws.String(string(evalMsg)),
 			}); err != nil {
 				svc.Logs.Error("failed to retry eval on scheduling queue", zap.Error(err))
@@ -187,14 +187,14 @@ func HandleRelease(conf *Conf, svc *Services, ev json.RawMessage) (res interface
 				}
 
 				//@TODO do this concurrently(?)
-				err = releaseAllocs(conf, svc, pool.PoolID)
+				err = releaseAllocs(conf, svc, pool)
 				if err != nil {
 					svc.Logs.Error("failed to release pool allocs", zap.String("pool", pool.PoolID), zap.Error(err))
 					continue
 				}
 
 				//@TODO do this concurrently(?)
-				err = releaseReplicas(conf, svc, pool.PoolID)
+				err = releaseReplicas(conf, svc, pool)
 				if err != nil {
 					svc.Logs.Error("failed to release pool replicas", zap.String("pool", pool.PoolID), zap.Error(err))
 					continue
@@ -205,9 +205,6 @@ func HandleRelease(conf *Conf, svc *Services, ev json.RawMessage) (res interface
 		}); err != nil {
 		return
 	}
-
-	//@TODO how to behave if pool is deleted
-	//@TODO does it matter if we just scan all items?
 
 	return ev, nil
 }

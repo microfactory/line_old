@@ -28,11 +28,9 @@ type Conf struct {
 	AWSRegion          string `envconfig:"AWS_REGION"`
 	StripBaseMappings  int    `envconfig:"STRIP_BASE_MAPPINGS"`
 
-	ReplicaTTL int64 `envconfig:"REPLICA_TTL"`
-	AllocTTL   int64 `envconfig:"ALLOC_TTL"`
-	MaxRetry   int   `envconfig:"MAX_RETRY"`
-
-	ScheduleQueueURL   string `envconfig:"SCHEDULE_QUEUE_URL"`
+	ReplicaTTL         int64  `envconfig:"REPLICA_TTL"`
+	AllocTTL           int64  `envconfig:"ALLOC_TTL"`
+	MaxRetry           int    `envconfig:"MAX_RETRY"`
 	ScheduleDLQueueURL string `envconfig:"SCHEDULE_DLQUEUE_URL"`
 
 	PoolsTableName     string `envconfig:"TABLE_NAME_POOLS"`

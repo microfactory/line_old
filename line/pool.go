@@ -16,6 +16,7 @@ type PoolPK struct {
 //Pool represents capacity provided by pools
 type Pool struct {
 	PoolPK
+	QueueURL string `dynamodbav:"que"`
 }
 
 var (

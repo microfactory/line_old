@@ -8,6 +8,9 @@ import (
 	"net/url"
 	"path"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/pkg/errors"
 )
 
@@ -15,12 +18,14 @@ import (
 type Client struct {
 	ep   *url.URL
 	http *http.Client
+	aws  *session.Session
 }
 
 //NewClient sets up an HTTP client that communicates with the server
-func NewClient(endpoint string) (c *Client, err error) {
+func NewClient(endpoint string, aws *session.Session) (c *Client, err error) {
 	c = &Client{
 		http: http.DefaultClient,
+		aws:  aws,
 	}
 	c.ep, err = url.Parse(endpoint)
 	if err != nil {
@@ -137,14 +142,38 @@ func (c *Client) SendHeartbeat(in *SendHeartbeatInput) (out *SendHeartbeatOutput
 	return out, nil
 }
 
-//ReceiveAllocs will long-poll the server for allocations and return when some have arrived at the worker
-func (c *Client) ReceiveAllocs(in *ReceiveAllocsInput) (out *ReceiveAllocsOutput, err error) {
-	//@TODO receive from worker queue
-	return nil, nil
-}
-
 //ScheduleEval will queue up an evaluation to be processed by the scheduling logic
 func (c *Client) ScheduleEval(in *ScheduleEvalInput) (out *ScheduleEvalOutput, err error) {
-	//@TODO send to queue endpoint?
-	return nil, nil
+	out = &ScheduleEvalOutput{}
+	err = c.doRequest(in, out)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to do HTTP request")
+	}
+	return out, nil
+}
+
+//ReceiveAllocs will open a long poll for new allocations
+func (c *Client) ReceiveAllocs(in *ReceiveAllocsInput) (out *ReceiveAllocsOutput, err error) {
+	recv, err := sqs.New(c.aws).ReceiveMessage(&sqs.ReceiveMessageInput{
+		QueueUrl:            aws.String(in.WorkerQueueURL),
+		MaxNumberOfMessages: aws.Int64(in.MaxNumberOfMessages),
+		WaitTimeSeconds:     aws.Int64(in.WaitTimeSeconds),
+	})
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to receive allocs")
+	}
+
+	out = &ReceiveAllocsOutput{}
+	for _, msg := range recv.Messages {
+		alloc := &Alloc{}
+		err := json.Unmarshal([]byte(aws.StringValue(msg.Body)), alloc)
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to decode alloc message")
+		}
+
+		out.Allocs = append(out.Allocs, alloc)
+	}
+
+	return out, nil
 }
