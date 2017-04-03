@@ -43,6 +43,8 @@ func (c *Client) doRequest(in interface{}, out interface{}) (err error) {
 		loc.Path = path.Join(loc.Path, "DeleteWorker")
 	case *SendHeartbeatInput:
 		loc.Path = path.Join(loc.Path, "SendHeartbeat")
+	case *ScheduleEvalInput:
+		loc.Path = path.Join(loc.Path, "ScheduleEval")
 	default:
 		return errors.Errorf("no known endpoint for %T", in)
 	}
@@ -126,10 +128,23 @@ func (c *Client) DeletePool(in *DeletePoolInput) (out *DeletePoolOutput, err err
 
 //SendHeartbeat will submit a periodic report that updates ttls of various entities under the workers responsibility
 func (c *Client) SendHeartbeat(in *SendHeartbeatInput) (out *SendHeartbeatOutput, err error) {
-	return nil, nil
+	out = &SendHeartbeatOutput{}
+	err = c.doRequest(in, out)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to do HTTP request")
+	}
+
+	return out, nil
 }
 
 //ReceiveAllocs will long-poll the server for allocations and return when some have arrived at the worker
 func (c *Client) ReceiveAllocs(in *ReceiveAllocsInput) (out *ReceiveAllocsOutput, err error) {
+	//@TODO receive from worker queue
+	return nil, nil
+}
+
+//ScheduleEval will queue up an evaluation to be processed by the scheduling logic
+func (c *Client) ScheduleEval(in *ScheduleEvalInput) (out *ScheduleEvalOutput, err error) {
+	//@TODO send to queue endpoint?
 	return nil, nil
 }

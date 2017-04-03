@@ -25,6 +25,7 @@ data "template_file" "env" {
     "LINE_AWS_ACCESS_KEY_ID" = "${aws_iam_access_key.runtime.id}"
     "LINE_AWS_SECRET_ACCESS_KEY" = "${aws_iam_access_key.runtime.secret}"
 
+    "LINE_REPLICA_TTL" = "30"
     "LINE_ALLOC_TTL" = "30"
     "LINE_MAX_RETRY" = "3"
 
@@ -33,6 +34,7 @@ data "template_file" "env" {
 
     "LINE_TABLE_NAME_POOLS" = "${aws_dynamodb_table.pools.name}"
     "LINE_TABLE_NAME_REPLICAS" = "${aws_dynamodb_table.replicas.name}"
+    "LINE_TABLE_IDX_REPLICAS_TTL" = "${lookup(aws_dynamodb_table.replicas.local_secondary_index[0], "name")}"
     "LINE_TABLE_NAME_WORKERS" = "${aws_dynamodb_table.workers.name}"
     "LINE_TABLE_IDX_WORKERS_CAP" = "${lookup(aws_dynamodb_table.workers.global_secondary_index[0], "name")}"
     "LINE_TABLE_IDX_ALLOCS_TTL" = "${lookup(aws_dynamodb_table.allocs.local_secondary_index[0], "name")}"

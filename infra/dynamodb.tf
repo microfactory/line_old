@@ -14,17 +14,28 @@ resource "aws_dynamodb_table" "replicas" {
   name = "${data.template_file.p.rendered}-replicas"
   read_capacity = 1
   write_capacity = 1
-  hash_key = "set"
-  range_key = "pwrk"
+  hash_key = "pool"
+  range_key = "rpl"
 
   attribute {
-    name = "pwrk" //pool:worker
+    name = "pool"
     type = "S"
   }
 
   attribute {
-    name = "set"  //dataset
+    name = "rpl"  //dataset:worker
     type = "S"
+  }
+
+  attribute {
+    name = "ttl"
+    type = "N"
+  }
+
+  local_secondary_index {
+    name               = "ttl_idx"
+    range_key          = "ttl"
+    projection_type    = "KEYS_ONLY"
   }
 }
 

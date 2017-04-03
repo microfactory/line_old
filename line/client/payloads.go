@@ -41,15 +41,15 @@ type DeletePoolOutput struct{}
 
 //SendHeartbeatInput is send when updating heartbeats
 type SendHeartbeatInput struct {
-	PoolID   string `json:"pool_id"`
-	WorkerID string `json:"worker_id"`
-	//@TODO allocs
-	//@TODO datasets
+	PoolID   string   `json:"pool_id"`
+	WorkerID string   `json:"worker_id"`
+	Allocs   []string `json:"allocs"`
+	Datasets []string `json:"datasets"`
 }
 
 //SendHeartbeatOutput is returned when updating heartbeats
 type SendHeartbeatOutput struct {
-	//@TODO expired items, or itself
+	//@TODO expired allocs(?), or itself(?)
 }
 
 //ReceiveAllocsInput will block until allocations are available for the worker
@@ -57,3 +57,9 @@ type ReceiveAllocsInput struct{}
 
 //ReceiveAllocsOutput is returned when new allocs are available
 type ReceiveAllocsOutput struct{}
+
+//ScheduleEvalInput will block until allocations are available for the worker
+type ScheduleEvalInput struct{}
+
+//ScheduleEvalOutput is returned when new allocs are available
+type ScheduleEvalOutput struct{}

@@ -30,8 +30,19 @@ func TestUserStory_1(t *testing.T) {
 	})
 	ok(t, err)
 
-	expired, err := c.SendHeartbeat(&client.SendHeartbeatInput{})
+	_, err = c.SendHeartbeat(&client.SendHeartbeatInput{
+		PoolID:   pool.PoolID,
+		WorkerID: worker.WorkerID,
+		Datasets: []string{"d1", "d2", "d3"},
+	})
 	ok(t, err)
+
+	_, err = c.ScheduleEval(&client.ScheduleEvalInput{})
+	ok(t, err)
+
+	allocs, err := c.ReceiveAllocs(&client.ReceiveAllocsInput{})
+	ok(t, err)
+	_ = allocs //@TODO assert allocation to match eval values
 
 	_, err = c.DeleteWorker(&client.DeleteWorkerInput{
 		PoolID:   pool.PoolID,
@@ -44,5 +55,4 @@ func TestUserStory_1(t *testing.T) {
 	})
 
 	ok(t, err)
-	_ = expired
 }

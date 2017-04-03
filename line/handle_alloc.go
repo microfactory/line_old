@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -177,6 +176,9 @@ func DeleteEvalMsg(conf *Conf, svc *Services, msg *sqs.Message) (err error) {
 //HandleAlloc is a Lambda handler that periodically reads from the scheduling queue and queries the workers table for available capacity. If the capacity can be claimed an allocation is created.
 func HandleAlloc(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}, err error) {
 
+	//@TODO do for each pool (at the beginning of the call)
+	//@TODO use poolID instead of eval field
+
 	for {
 		var out *sqs.ReceiveMessageOutput
 		if out, err = svc.SQS.ReceiveMessage(&sqs.ReceiveMessageInput{
@@ -202,7 +204,12 @@ func HandleAlloc(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}
 				eval.Size = 1
 			}
 
-			//if the eval requires specific dataset it must be present on a given pool
+			if eval.Pool == "" {
+				svc.Logs.Error("eval didn't specify a pool to schedule on")
+				continue
+			}
+
+			//if the eval requires specific dataset we can provide locality based scheduling by finding replicas in the pool
 			replicas := []*Replica{}
 			if eval.Dataset != "" {
 				replicas, err = FindReplicas(conf, svc, eval)
@@ -216,23 +223,6 @@ func HandleAlloc(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}
 					svc.Logs.Error("no-replicas found for dataset and pool requirements", zap.String("dataset", eval.Dataset), zap.String("pool", eval.Pool))
 					continue
 				}
-			}
-
-			//if there is no explicity pool, we might be able to infer from locality information, i.e pools that hold a replica
-			if eval.Pool == "" && len(replicas) > 0 {
-				//@TODO more sophisticated selection between pools instead of selecting the first
-				parts := strings.Split(replicas[0].PoolWorkerID, ":")
-				if len(parts) != 0 {
-					svc.Logs.Error("failed to infer pool from replica, invalid pworker field", zap.String("pwrk", replicas[0].PoolWorkerID))
-				}
-
-				eval.Pool = parts[0]
-			}
-
-			//at this point we should have some sort of pool
-			if eval.Pool == "" {
-				svc.Logs.Error("eval has no specific pool or was unable to infer from dataset")
-				continue
 			}
 
 			//find capacity in the pool

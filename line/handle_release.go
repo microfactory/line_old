@@ -13,17 +13,57 @@ import (
 	"go.uber.org/zap"
 )
 
-//HandleRelease is a Lambda handler that periodically queries a pool's expired allocations and releases the capacity back to the worker table
-func HandleRelease(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}, err error) {
+func releaseReplicas(conf *Conf, svc *Services, poolID string) (err error) {
+	condAttr, err := dynamodbattribute.MarshalMap(Replica{
+		TTL:       time.Now().Unix(),
+		ReplicaPK: ReplicaPK{PoolID: poolID},
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal replica condition")
+	}
 
-	//@TODO do for each pool, concurrently
+	var out *dynamodb.QueryOutput
+	if out, err = svc.DB.Query(&dynamodb.QueryInput{
+		TableName:              aws.String(conf.ReplicasTableName),
+		IndexName:              aws.String(conf.ReplicasTTLIdxName),
+		KeyConditionExpression: aws.String("#pool = :poolID AND #ttl < :now"),
+		ExpressionAttributeNames: map[string]*string{
+			"#pool": aws.String("pool"),
+			"#ttl":  aws.String("ttl"),
+		},
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":poolID": condAttr["pool"],
+			":now":    condAttr["ttl"],
+		},
+	}); err != nil {
+		return errors.Wrap(err, "failed to query replicas")
+	}
 
+	svc.Logs.Info("replicas expired", zap.Int("n", len(out.Items)))
+	for _, item := range out.Items {
+		replica := &Replica{}
+		err = dynamodbattribute.UnmarshalMap(item, replica)
+		if err != nil {
+			svc.Logs.Error("failed to unmarshal expired replica", zap.Error(err))
+			continue
+		}
+
+		err = DeleteReplica(conf, svc.DB, replica.ReplicaPK)
+		if err != nil {
+			svc.Logs.Error("failed to delete replica", zap.String("replica", fmt.Sprintf("%+v", replica.ReplicaPK)), zap.Error(err))
+		}
+	}
+
+	return nil
+}
+
+func releaseAllocs(conf *Conf, svc *Services, poolID string) (err error) {
 	condAttr, err := dynamodbattribute.MarshalMap(Alloc{
-		AllocPK: AllocPK{PoolID: "default"}, //@TODO do for each pool
+		AllocPK: AllocPK{PoolID: poolID},
 		TTL:     time.Now().Unix(),
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to marshal alloc condition")
+		return errors.Wrap(err, "failed to marshal alloc condition")
 	}
 
 	var out *dynamodb.QueryOutput
@@ -40,7 +80,7 @@ func HandleRelease(conf *Conf, svc *Services, ev json.RawMessage) (res interface
 			":now":    condAttr["ttl"],
 		},
 	}); err != nil {
-		return nil, errors.Wrap(err, "failed to query allocations")
+		return errors.Wrap(err, "failed to query allocations")
 	}
 
 	svc.Logs.Info("allocations expired", zap.Int("n", len(out.Items)))
@@ -127,6 +167,47 @@ func HandleRelease(conf *Conf, svc *Services, ev json.RawMessage) (res interface
 			continue
 		}
 	}
+
+	return nil
+}
+
+//HandleRelease is a Lambda handler that periodically queries a pool's expired allocations and releases the capacity back to the worker table
+func HandleRelease(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}, err error) {
+
+	if err = svc.DB.ScanPages(&dynamodb.ScanInput{
+		TableName: aws.String(conf.PoolsTableName),
+	},
+		func(page *dynamodb.ScanOutput, lastPage bool) bool {
+			for _, item := range page.Items {
+				pool := &Pool{}
+				err := dynamodbattribute.UnmarshalMap(item, pool)
+				if err != nil {
+					svc.Logs.Error("failed to unmarshal replica item", zap.Error(err))
+					continue
+				}
+
+				//@TODO do this concurrently(?)
+				err = releaseAllocs(conf, svc, pool.PoolID)
+				if err != nil {
+					svc.Logs.Error("failed to release pool allocs", zap.String("pool", pool.PoolID), zap.Error(err))
+					continue
+				}
+
+				//@TODO do this concurrently(?)
+				err = releaseReplicas(conf, svc, pool.PoolID)
+				if err != nil {
+					svc.Logs.Error("failed to release pool replicas", zap.String("pool", pool.PoolID), zap.Error(err))
+					continue
+				}
+			}
+
+			return true
+		}); err != nil {
+		return
+	}
+
+	//@TODO how to behave if pool is deleted
+	//@TODO does it matter if we just scan all items?
 
 	return ev, nil
 }

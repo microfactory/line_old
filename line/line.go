@@ -28,18 +28,20 @@ type Conf struct {
 	AWSRegion          string `envconfig:"AWS_REGION"`
 	StripBaseMappings  int    `envconfig:"STRIP_BASE_MAPPINGS"`
 
-	AllocTTL int64 `envconfig:"ALLOC_TTL"`
-	MaxRetry int   `envconfig:"MAX_RETRY"`
+	ReplicaTTL int64 `envconfig:"REPLICA_TTL"`
+	AllocTTL   int64 `envconfig:"ALLOC_TTL"`
+	MaxRetry   int   `envconfig:"MAX_RETRY"`
 
 	ScheduleQueueURL   string `envconfig:"SCHEDULE_QUEUE_URL"`
 	ScheduleDLQueueURL string `envconfig:"SCHEDULE_DLQUEUE_URL"`
 
-	PoolsTableName    string `envconfig:"TABLE_NAME_POOLS"`
-	ReplicasTableName string `envconfig:"TABLE_NAME_REPLICAS"`
-	WorkersTableName  string `envconfig:"TABLE_NAME_WORKERS"`
-	WorkersCapIdxName string `envconfig:"TABLE_IDX_WORKERS_CAP"`
-	AllocsTableName   string `envconfig:"TABLE_NAME_ALLOCS"`
-	AllocsTTLIdxName  string `envconfig:"TABLE_IDX_ALLOCS_TTL"`
+	PoolsTableName     string `envconfig:"TABLE_NAME_POOLS"`
+	ReplicasTableName  string `envconfig:"TABLE_NAME_REPLICAS"`
+	ReplicasTTLIdxName string `envconfig:"TABLE_IDX_REPLICAS_TTL"`
+	WorkersTableName   string `envconfig:"TABLE_NAME_WORKERS"`
+	WorkersCapIdxName  string `envconfig:"TABLE_IDX_WORKERS_CAP"`
+	AllocsTableName    string `envconfig:"TABLE_NAME_ALLOCS"`
+	AllocsTTLIdxName   string `envconfig:"TABLE_IDX_ALLOCS_TTL"`
 }
 
 //Handler describes a Lambda handler that matches a specific suffic

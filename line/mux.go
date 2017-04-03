@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sqs"
@@ -14,6 +15,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/pressly/chi"
 )
+
+//FmtReplicaID formats the combined pool and worker id of a replica
+func FmtReplicaID(datasetID, workerID string) string {
+	return fmt.Sprintf("%s:%s", datasetID, workerID)
+}
 
 //FmtWorkerQueueName will format a sqs queue name consistently
 func FmtWorkerQueueName(conf *Conf, poolID, workerID string) string {
@@ -156,12 +162,47 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 			return errors.Wrap(err, "failed to delete worker")
 		}
 
+		//@TODO delete all workers
+		//@TODO delete replicas; they are used before a pool is determined and can thus inlfuence scheduling if not removed
+
+		//@NOTE: remaining allocations will eventually be removed by dynamo ttl
+		//@NOTE: remaining replicas will eventually be removed by dynamo ttl
+
 		return encodeOutput(w, &client.DeletePoolOutput{})
 	}))
 
-	r.Post("/SendHeartbeat", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, `{"message": "send heartbeat"}`)
-	})
+	r.Post("/SendHeartbeat", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
+		input := &client.SendHeartbeatInput{}
+		err = decodeInput(r.Body, input)
+		if err != nil {
+			return err
+		}
+
+		pool, err := GetPool(conf, svc.DB, PoolPK{input.PoolID})
+		if err != nil {
+			return errors.Wrap(err, "failed to get pool")
+		}
+
+		//update replicas, resetting the ttl
+		now := time.Now()
+		for _, datasetID := range input.Datasets {
+			replica := &Replica{
+				ReplicaPK: ReplicaPK{
+					PoolID:    pool.PoolID,
+					ReplicaID: FmtReplicaID(datasetID, input.WorkerID),
+				},
+				TTL: now.Unix() + conf.AllocTTL,
+			}
+
+			if err = PutReplica(conf, svc.DB, replica); err != nil {
+				return errors.Wrapf(err, "failed to update replica: %+v", replica)
+			}
+		}
+
+		//@TODO update alloc ttl
+
+		return encodeOutput(w, &client.SendHeartbeatOutput{})
+	}))
 
 	r.NotFound(notFoundHandler)
 	r.MethodNotAllowed(methodNotAllowedHandler)
