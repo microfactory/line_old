@@ -61,11 +61,23 @@ resource "aws_dynamodb_table" "workers" {
     type = "N"
   }
 
+  attribute {
+    name = "ttl"
+    type = "N"
+  }
+
+  local_secondary_index {
+    name               = "ttl_idx"
+    range_key          = "ttl"
+    projection_type    = "KEYS_ONLY"
+  }
+
   global_secondary_index {
     name               = "cap_idx"
     hash_key           = "pool"
     range_key          = "cap"
-    projection_type    = "KEYS_ONLY"
+    projection_type    = "INCLUDE"
+    non_key_attributes = ["ttl"]
     write_capacity     = 1
     read_capacity      = 1
   }

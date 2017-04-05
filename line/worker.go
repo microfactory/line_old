@@ -19,6 +19,7 @@ type Worker struct {
 	WorkerPK
 	Capacity int    `dynamodbav:"cap"`
 	QueueURL string `dynamodbav:"que"`
+	TTL      int64  `dynamodbav:"ttl"`
 }
 
 var (
@@ -37,9 +38,11 @@ func PutNewWorker(conf *Conf, db DB, worker *Worker) (err error) {
 	}
 
 	if _, err = db.PutItem(&dynamodb.PutItemInput{
-		TableName:                aws.String(conf.WorkersTableName),
-		ConditionExpression:      aws.String("attribute_not_exists(#wkr)"),
-		ExpressionAttributeNames: map[string]*string{"#wkr": aws.String("wkr")},
+		TableName:           aws.String(conf.WorkersTableName),
+		ConditionExpression: aws.String("attribute_not_exists(#wkr)"),
+		ExpressionAttributeNames: map[string]*string{
+			"#wkr": aws.String("wkr"),
+		},
 		Item: item,
 	}); err != nil {
 		aerr, ok := err.(awserr.Error)
@@ -71,6 +74,42 @@ func DeleteWorker(conf *Conf, db DB, wpk WorkerPK) (err error) {
 		aerr, ok := err.(awserr.Error)
 		if !ok || aerr.Code() != dynamodb.ErrCodeConditionalCheckFailedException {
 			return errors.Wrap(err, "failed to delete item")
+		}
+
+		return ErrWorkerNotExists
+	}
+
+	return nil
+}
+
+//UpdateWorkerTTL under the condition that it exists
+func UpdateWorkerTTL(conf *Conf, db DB, ttl int64, apk WorkerPK) (err error) {
+	pk, err := dynamodbattribute.MarshalMap(apk)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal keys map")
+	}
+
+	ttlattr, err := dynamodbattribute.Marshal(ttl)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal new ttl")
+	}
+
+	if _, err = db.UpdateItem(&dynamodb.UpdateItemInput{
+		TableName:           aws.String(conf.WorkersTableName),
+		Key:                 pk,
+		UpdateExpression:    aws.String("SET #ttl = :ttl"),
+		ConditionExpression: aws.String("attribute_exists(#pool)"),
+		ExpressionAttributeNames: map[string]*string{
+			"#ttl":  aws.String("ttl"),
+			"#pool": aws.String("pool"),
+		},
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":ttl": ttlattr,
+		},
+	}); err != nil {
+		aerr, ok := err.(awserr.Error)
+		if !ok || aerr.Code() != dynamodb.ErrCodeConditionalCheckFailedException {
+			return errors.Wrap(err, "failed to update item")
 		}
 
 		return ErrWorkerNotExists

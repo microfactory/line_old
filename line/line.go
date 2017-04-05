@@ -28,6 +28,8 @@ type Conf struct {
 	AWSRegion          string `envconfig:"AWS_REGION"`
 	StripBaseMappings  int    `envconfig:"STRIP_BASE_MAPPINGS"`
 
+	PoolTTL            int64  `envconfig:"POOL_TTL"`
+	WorkerTTL          int64  `envconfig:"WORKER_TTL"`
 	ReplicaTTL         int64  `envconfig:"REPLICA_TTL"`
 	AllocTTL           int64  `envconfig:"ALLOC_TTL"`
 	MaxRetry           int    `envconfig:"MAX_RETRY"`
@@ -36,6 +38,7 @@ type Conf struct {
 	PoolsTableName     string `envconfig:"TABLE_NAME_POOLS"`
 	ReplicasTableName  string `envconfig:"TABLE_NAME_REPLICAS"`
 	ReplicasTTLIdxName string `envconfig:"TABLE_IDX_REPLICAS_TTL"`
+	WorkersTTLIdxName  string `envconfig:"TABLE_IDX_WORKERS_TTL"`
 	WorkersTableName   string `envconfig:"TABLE_NAME_WORKERS"`
 	WorkersCapIdxName  string `envconfig:"TABLE_IDX_WORKERS_CAP"`
 	AllocsTableName    string `envconfig:"TABLE_NAME_ALLOCS"`

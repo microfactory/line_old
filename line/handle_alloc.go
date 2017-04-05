@@ -121,9 +121,10 @@ func Schedule(conf *Conf, svc *Services, eval *Eval, pool *Pool, replicas []*Rep
 		return candidates[i].Capacity >= candidates[j].Capacity
 	})
 
-	//@TODO filter candidates with a ttl in the future
+	//@TODO filter candidates with a ttl in the past
 
-	//if there is some locality information available, we would like to choose a worker with capacity near the data
+	//if there is some locality information available, we would like to choose a worker that is near the data.
+	//@TODO can we switch to only using dynamo native ttl expiration? This is more related to worker livelyness? Replica's existence on a worker can be significantly out of date as its ttl is controlled by dynamos native expiration
 	if len(replicas) > 0 {
 		//@TODO if workers with a replica have capacity, put these on top
 		//else put workers in the same zone on top
@@ -271,6 +272,10 @@ func HandleAlloc(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}
 				if err != nil {
 					svc.Logs.Error("failed to unmarshal replica item", zap.Error(err))
 					continue
+				}
+
+				if pool.TTL > 0 {
+					continue //pool is marked for deletion, no evaluations allowed
 				}
 
 				svc.Logs.Info("pool", zap.String("pool", fmt.Sprintf("%+v", pool)))

@@ -22,22 +22,13 @@ type CreateWorkerOutput struct {
 	Capacity int    `json:"capacity"`
 }
 
-//DeleteWorkerInput will remove a worker
-type DeleteWorkerInput struct {
-	PoolID   string `json:"pool_id"`
-	WorkerID string `json:"worker_id"`
-}
-
-//DeleteWorkerOutput is returned when a worker is removed
-type DeleteWorkerOutput struct{}
-
-//DeletePoolInput will remove a worker
-type DeletePoolInput struct {
+//DisbandPoolInput will remove a worker
+type DisbandPoolInput struct {
 	PoolID string `json:"pool_id"`
 }
 
-//DeletePoolOutput is returned when a worker is removed
-type DeletePoolOutput struct{}
+//DisbandPoolOutput is returned when a worker is removed
+type DisbandPoolOutput struct{}
 
 //SendHeartbeatInput is send when updating heartbeats
 type SendHeartbeatInput struct {

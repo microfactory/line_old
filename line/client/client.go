@@ -40,12 +40,10 @@ func (c *Client) doRequest(in interface{}, out interface{}) (err error) {
 	switch in.(type) {
 	case *CreatePoolInput:
 		loc.Path = path.Join(loc.Path, "CreatePool")
-	case *DeletePoolInput:
-		loc.Path = path.Join(loc.Path, "DeletePool")
+	case *DisbandPoolInput:
+		loc.Path = path.Join(loc.Path, "DisbandPool")
 	case *CreateWorkerInput:
 		loc.Path = path.Join(loc.Path, "CreateWorker")
-	case *DeleteWorkerInput:
-		loc.Path = path.Join(loc.Path, "DeleteWorker")
 	case *SendHeartbeatInput:
 		loc.Path = path.Join(loc.Path, "SendHeartbeat")
 	case *ScheduleEvalInput:
@@ -109,20 +107,9 @@ func (c *Client) CreateWorker(in *CreateWorkerInput) (out *CreateWorkerOutput, e
 	return out, nil
 }
 
-//DeleteWorker will remove a worker from the pool
-func (c *Client) DeleteWorker(in *DeleteWorkerInput) (out *DeleteWorkerOutput, err error) {
-	out = &DeleteWorkerOutput{}
-	err = c.doRequest(in, out)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to do HTTP request")
-	}
-
-	return out, nil
-}
-
-//DeletePool will remove a pool
-func (c *Client) DeletePool(in *DeletePoolInput) (out *DeletePoolOutput, err error) {
-	out = &DeletePoolOutput{}
+//DisbandPool will remove a pool
+func (c *Client) DisbandPool(in *DisbandPoolInput) (out *DisbandPoolOutput, err error) {
+	out = &DisbandPoolOutput{}
 	err = c.doRequest(in, out)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to do HTTP request")

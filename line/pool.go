@@ -17,6 +17,7 @@ type PoolPK struct {
 type Pool struct {
 	PoolPK
 	QueueURL string `dynamodbav:"que"`
+	TTL      int64  `dynamodbav:"ttl"`
 }
 
 var (
@@ -51,24 +52,34 @@ func PutNewPool(conf *Conf, db DB, pool *Pool) (err error) {
 	return nil
 }
 
-//DeletePool deletes a pool by pk
-func DeletePool(conf *Conf, db DB, ppk PoolPK) (err error) {
-	pk, err := dynamodbattribute.MarshalMap(ppk)
+//UpdatePoolTTL under the condition that it exists
+func UpdatePoolTTL(conf *Conf, db DB, ttl int64, apk PoolPK) (err error) {
+	pk, err := dynamodbattribute.MarshalMap(apk)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal keys map")
 	}
 
-	if _, err = db.DeleteItem(&dynamodb.DeleteItemInput{
+	ttlattr, err := dynamodbattribute.Marshal(ttl)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal new ttl")
+	}
+
+	if _, err = db.UpdateItem(&dynamodb.UpdateItemInput{
 		TableName:           aws.String(conf.PoolsTableName),
 		Key:                 pk,
+		UpdateExpression:    aws.String("SET #ttl = :ttl"),
 		ConditionExpression: aws.String("attribute_exists(#pool)"),
 		ExpressionAttributeNames: map[string]*string{
+			"#ttl":  aws.String("ttl"),
 			"#pool": aws.String("pool"),
+		},
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":ttl": ttlattr,
 		},
 	}); err != nil {
 		aerr, ok := err.(awserr.Error)
 		if !ok || aerr.Code() != dynamodb.ErrCodeConditionalCheckFailedException {
-			return errors.Wrap(err, "failed to delete item")
+			return errors.Wrap(err, "failed to update item")
 		}
 
 		return ErrPoolNotExists

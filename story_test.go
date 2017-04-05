@@ -106,15 +106,9 @@ func TestUserStory_1(t *testing.T) {
 	})
 	ok(t, err)
 
-	//@TODO how about crashing workers(?)
+	//@TODO filter replicas and workers such that expired items dont get considered for scheduling
 
-	_, err = c.DeleteWorker(&client.DeleteWorkerInput{
-		PoolID:   pool.PoolID,
-		WorkerID: worker.WorkerID,
-	})
-	ok(t, err)
-
-	_, err = c.DeletePool(&client.DeletePoolInput{
+	_, err = c.DisbandPool(&client.DisbandPoolInput{
 		PoolID: pool.PoolID,
 	})
 	ok(t, err)

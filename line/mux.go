@@ -101,6 +101,10 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 			return errors.Wrap(err, "failed to get pool")
 		}
 
+		if pool.TTL > 0 {
+			return errors.Wrap(err, "pool has been disbanded")
+		}
+
 		idb := make([]byte, 10)
 		_, err = rand.Read(idb)
 		if err != nil {
@@ -122,6 +126,7 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 			},
 			QueueURL: aws.StringValue(qout.QueueUrl),
 			Capacity: input.Capacity,
+			TTL:      time.Now().Unix() + conf.WorkerTTL,
 		}
 
 		err = PutNewWorker(conf, svc.DB, worker)
@@ -140,36 +145,10 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 	}))
 
 	//
-	// Delete Worker
+	// Disband Pool
 	//
-	r.Post("/DeleteWorker", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
-		input := &client.DeleteWorkerInput{}
-		err = decodeInput(r.Body, input)
-		if err != nil {
-			return err
-		}
-
-		if _, err = svc.SQS.DeleteQueue(&sqs.DeleteQueueInput{
-			QueueUrl: aws.String(FmtWorkerQueueURL(conf, input.PoolID, input.WorkerID)),
-		}); err != nil {
-			return errors.Wrap(err, "failed to remove queue")
-		}
-
-		if err = DeleteWorker(conf, svc.DB, WorkerPK{
-			PoolID:   input.PoolID,
-			WorkerID: input.WorkerID,
-		}); err != nil {
-			return errors.Wrap(err, "failed to delete worker")
-		}
-
-		return encodeOutput(w, &client.DeleteWorkerOutput{})
-	}))
-
-	//
-	// Delete Pool
-	//
-	r.Post("/DeletePool", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
-		input := &client.DeletePoolInput{}
+	r.Post("/DisbandPool", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
+		input := &client.DisbandPoolInput{}
 		err = decodeInput(r.Body, input)
 		if err != nil {
 			return err
@@ -181,18 +160,14 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 			return errors.Wrap(err, "failed to remove queue")
 		}
 
-		if err = DeletePool(conf, svc.DB, PoolPK{
+		expire := time.Now().Unix() + conf.PoolTTL
+		if err = UpdatePoolTTL(conf, svc.DB, expire, PoolPK{
 			PoolID: input.PoolID,
 		}); err != nil {
-			return errors.Wrap(err, "failed to delete worker")
+			return errors.Wrap(err, "failed to update pool ttl")
 		}
 
-		//@TODO delete all workers
-
-		//@NOTE: remaining pool allocations will eventually be removed by dynamo ttl
-		//@NOTE: remaining pool replicas will eventually be removed by dynamo ttl
-
-		return encodeOutput(w, &client.DeletePoolOutput{})
+		return encodeOutput(w, &client.DisbandPoolOutput{})
 	}))
 
 	r.Post("/SendHeartbeat", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
@@ -207,15 +182,26 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 			return errors.Wrap(err, "failed to get pool")
 		}
 
+		if pool.TTL > 0 {
+			return errors.Wrap(err, "pool has been disbanded")
+		}
+
+		now := time.Now().Unix()
+		if err = UpdateWorkerTTL(conf, svc.DB, now+conf.WorkerTTL, WorkerPK{
+			PoolID:   pool.PoolID,
+			WorkerID: input.WorkerID,
+		}); err != nil {
+			return errors.Wrap(err, "failed to update worker ttl")
+		}
+
 		//update replicas, resetting the ttl
-		now := time.Now()
 		for _, datasetID := range input.Datasets {
 			replica := &Replica{
 				ReplicaPK: ReplicaPK{
 					PoolID:    pool.PoolID,
 					ReplicaID: FmtReplicaID(datasetID, input.WorkerID),
 				},
-				TTL: now.Unix() + conf.ReplicaTTL,
+				TTL: now + conf.ReplicaTTL,
 			}
 
 			if err = PutReplica(conf, svc.DB, replica); err != nil {
@@ -230,7 +216,7 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 				AllocID: allocID,
 			}
 
-			if err = UpdateAllocTTL(conf, svc.DB, now.Unix()+conf.AllocTTL, apk); err != nil {
+			if err = UpdateAllocTTL(conf, svc.DB, now+conf.AllocTTL, apk); err != nil {
 				return errors.Wrapf(err, "failed to update alloc ttl: %+v", allocID)
 			}
 		}
@@ -248,6 +234,10 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 		pool, err := GetPool(conf, svc.DB, PoolPK{input.PoolID})
 		if err != nil {
 			return errors.Wrap(err, "failed to get pool")
+		}
+
+		if pool.TTL > 0 {
+			return errors.Wrap(err, "pool has been disbanded")
 		}
 
 		msg, err := json.Marshal(&Eval{Size: input.Size, Dataset: input.DatasetID})
