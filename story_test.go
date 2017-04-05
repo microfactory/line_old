@@ -106,7 +106,8 @@ func TestUserStory_1(t *testing.T) {
 	})
 	ok(t, err)
 
-	//@TODO filter replicas and workers such that expired items dont get considered for scheduling
+	//@TODO rename createWorker to offerCapacity?
+	//@TODO rename allocHandler to scheduleHandler
 
 	_, err = c.DisbandPool(&client.DisbandPoolInput{
 		PoolID: pool.PoolID,

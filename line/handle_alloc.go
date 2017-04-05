@@ -60,6 +60,10 @@ func FindReplicas(conf *Conf, svc *Services, eval *Eval, pool *Pool) ([]*Replica
 				continue
 			}
 
+			if replica.TTL < time.Now().Unix() {
+				continue //skip expired replicas
+			}
+
 			replicas = append(replicas, replica)
 		}
 	}
@@ -112,6 +116,10 @@ func Schedule(conf *Conf, svc *Services, eval *Eval, pool *Pool, replicas []*Rep
 			continue
 		}
 
+		if cand.TTL < time.Now().Unix() {
+			continue //skip expired workers
+		}
+
 		candidates = append(candidates, cand)
 	}
 
@@ -121,10 +129,7 @@ func Schedule(conf *Conf, svc *Services, eval *Eval, pool *Pool, replicas []*Rep
 		return candidates[i].Capacity >= candidates[j].Capacity
 	})
 
-	//@TODO filter candidates with a ttl in the past
-
 	//if there is some locality information available, we would like to choose a worker that is near the data.
-	//@TODO can we switch to only using dynamo native ttl expiration? This is more related to worker livelyness? Replica's existence on a worker can be significantly out of date as its ttl is controlled by dynamos native expiration
 	if len(replicas) > 0 {
 		//@TODO if workers with a replica have capacity, put these on top
 		//else put workers in the same zone on top
