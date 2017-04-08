@@ -10,11 +10,12 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/sqs"
+	"github.com/microfactory/line/line/conf"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
-func releaseReplicas(conf *Conf, svc *Services, pool *Pool) (err error) {
+func releaseReplicas(conf *conf.Conf, svc *conf.Services, pool *Pool) (err error) {
 	condAttr, err := dynamodbattribute.MarshalMap(Replica{
 		TTL:       time.Now().Unix(),
 		ReplicaPK: ReplicaPK{PoolID: pool.PoolID},
@@ -58,7 +59,7 @@ func releaseReplicas(conf *Conf, svc *Services, pool *Pool) (err error) {
 	return nil
 }
 
-func releaseWorkers(conf *Conf, svc *Services, pool *Pool) (err error) {
+func releaseWorkers(conf *conf.Conf, svc *conf.Services, pool *Pool) (err error) {
 	condAttr, err := dynamodbattribute.MarshalMap(Worker{
 		TTL:      time.Now().Unix(),
 		WorkerPK: WorkerPK{PoolID: pool.PoolID},
@@ -109,7 +110,7 @@ func releaseWorkers(conf *Conf, svc *Services, pool *Pool) (err error) {
 	return nil
 }
 
-func releaseAlloc(conf *Conf, svc *Services, alloc *Alloc) (err error) {
+func releaseAlloc(conf *conf.Conf, svc *conf.Services, alloc *Alloc) (err error) {
 	svc.Logs.Info("releasing alloc", zap.String("alloc", fmt.Sprintf("%+v", alloc)))
 
 	wpk, err := dynamodbattribute.MarshalMap(WorkerPK{PoolID: alloc.PoolID, WorkerID: alloc.WorkerID})
@@ -149,7 +150,7 @@ func releaseAlloc(conf *Conf, svc *Services, alloc *Alloc) (err error) {
 	return nil
 }
 
-func releaseAllocs(conf *Conf, svc *Services, pool *Pool) (err error) {
+func releaseAllocs(conf *conf.Conf, svc *conf.Services, pool *Pool) (err error) {
 	condAttr, err := dynamodbattribute.MarshalMap(Alloc{
 		AllocPK: AllocPK{PoolID: pool.PoolID},
 		TTL:     time.Now().Unix(),
@@ -234,7 +235,7 @@ func releaseAllocs(conf *Conf, svc *Services, pool *Pool) (err error) {
 }
 
 //HandleRelease is a Lambda handler that periodically queries a pool's expired allocations, replicas and workers
-func HandleRelease(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}, err error) {
+func HandleRelease(conf *conf.Conf, svc *conf.Services, ev json.RawMessage) (res interface{}, err error) {
 
 	if err = svc.DB.ScanPages(&dynamodb.ScanInput{
 		TableName: aws.String(conf.PoolsTableName),

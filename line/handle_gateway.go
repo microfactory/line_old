@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/microfactory/line/line/conf"
 	"github.com/pkg/errors"
 )
 
@@ -31,7 +32,7 @@ type GatewayResponse struct {
 }
 
 //HandleGateway takes invocations from the API Gateway and handles them as HTTP requests to return HTTP responses based on restful principles
-func HandleGateway(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}, err error) {
+func HandleGateway(conf *conf.Conf, svc *conf.Services, ev json.RawMessage) (res interface{}, err error) {
 	req := &GatewayRequest{}
 	err = json.Unmarshal(ev, req)
 	if err != nil {

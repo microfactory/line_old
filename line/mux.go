@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/microfactory/line/line/client"
+	"github.com/microfactory/line/line/conf"
 	"github.com/pkg/errors"
 	"github.com/pressly/chi"
 )
@@ -22,27 +23,27 @@ func FmtReplicaID(datasetID, workerID string) string {
 }
 
 //FmtWorkerQueueName will format a sqs queue name consistently
-func FmtWorkerQueueName(conf *Conf, poolID, workerID string) string {
+func FmtWorkerQueueName(conf *conf.Conf, poolID, workerID string) string {
 	return fmt.Sprintf("%s-%s-%s", conf.Deployment, poolID, workerID)
 }
 
 //FmtPoolQueueName will format a sqs queue name consistently
-func FmtPoolQueueName(conf *Conf, poolID string) string {
+func FmtPoolQueueName(conf *conf.Conf, poolID string) string {
 	return fmt.Sprintf("%s-%s", conf.Deployment, poolID)
 }
 
 //FmtPoolQueueURL is able to "predict" an sqs queue url from configurations
-func FmtPoolQueueURL(conf *Conf, poolID string) string {
+func FmtPoolQueueURL(conf *conf.Conf, poolID string) string {
 	return fmt.Sprintf("https://sqs.%s.amazonaws.com/%s/%s", conf.AWSRegion, conf.AWSAccountID, FmtPoolQueueName(conf, poolID))
 }
 
 //FmtWorkerQueueURL is able to "predict" an sqs queue url from configurations
-func FmtWorkerQueueURL(conf *Conf, poolID, workerID string) string {
+func FmtWorkerQueueURL(conf *conf.Conf, poolID, workerID string) string {
 	return fmt.Sprintf("https://sqs.%s.amazonaws.com/%s/%s", conf.AWSRegion, conf.AWSAccountID, FmtWorkerQueueName(conf, poolID, workerID))
 }
 
 //Mux sets up the HTTP multiplexer
-func Mux(conf *Conf, svc *Services) http.Handler {
+func Mux(conf *conf.Conf, svc *conf.Services) http.Handler {
 	r := chi.NewRouter()
 
 	//
@@ -204,7 +205,7 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 			}
 		}
 
-		//update allocs, moving the ttl futher into the future
+		//update allocs, moving the ttl further into the future
 		for _, allocID := range input.Allocs {
 			apk := AllocPK{
 				PoolID:  pool.PoolID,
@@ -212,7 +213,11 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 			}
 
 			if err = UpdateAllocTTL(conf, svc.DB, now+conf.AllocTTL, apk); err != nil {
-				return errors.Wrapf(err, "failed to update alloc ttl: %+v", allocID)
+				if err == ErrAllocNotExists {
+					//alloc was already removed, no use updating the ttl
+				} else {
+					return errors.Wrapf(err, "failed to update alloc ttl: %+v", allocID)
+				}
 			}
 		}
 

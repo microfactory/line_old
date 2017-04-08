@@ -5,6 +5,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"github.com/microfactory/line/line/conf"
 	"github.com/pkg/errors"
 )
 
@@ -31,7 +32,7 @@ var (
 )
 
 //GetAlloc returns a pool by its primary key
-func GetAlloc(conf *Conf, db DB, pk AllocPK) (alloc *Alloc, err error) {
+func GetAlloc(conf *conf.Conf, db DB, pk AllocPK) (alloc *Alloc, err error) {
 	ipk, err := dynamodbattribute.MarshalMap(pk)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to marshal keys map")
@@ -59,7 +60,7 @@ func GetAlloc(conf *Conf, db DB, pk AllocPK) (alloc *Alloc, err error) {
 }
 
 //PutNewAlloc will put an alloc with the condition the pk doesn't exist yet
-func PutNewAlloc(conf *Conf, db DB, alloc *Alloc) (err error) {
+func PutNewAlloc(conf *conf.Conf, db DB, alloc *Alloc) (err error) {
 	item, err := dynamodbattribute.MarshalMap(alloc)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal item map")
@@ -82,7 +83,7 @@ func PutNewAlloc(conf *Conf, db DB, alloc *Alloc) (err error) {
 }
 
 //UpdateAllocTTL under the condition that it exists
-func UpdateAllocTTL(conf *Conf, db DB, ttl int64, apk AllocPK) (err error) {
+func UpdateAllocTTL(conf *conf.Conf, db DB, ttl int64, apk AllocPK) (err error) {
 	pk, err := dynamodbattribute.MarshalMap(apk)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal keys map")

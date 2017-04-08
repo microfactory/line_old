@@ -17,6 +17,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/microfactory/line/line"
+	"github.com/microfactory/line/line/conf"
 )
 
 // Context provides information about Lambda execution environment.
@@ -38,18 +39,18 @@ func Handle(ev json.RawMessage, ctx *Context) (interface{}, error) {
 		log.Fatalf("failed to create logger: %+v", err)
 	}
 
-	conf := &line.Conf{}
-	err = envconfig.Process("LINE", conf)
+	cfg := &conf.Conf{}
+	err = envconfig.Process("LINE", cfg)
 	if err != nil {
 		logs.Fatal("failed to process env config", zap.Error(err))
 	}
 
 	sess, err := session.NewSession(
 		&aws.Config{
-			Region: aws.String(conf.AWSRegion),
+			Region: aws.String(cfg.AWSRegion),
 			Credentials: credentials.NewStaticCredentials(
-				conf.AWSAccessKeyID,
-				conf.AWSSecretAccessKey,
+				cfg.AWSAccessKeyID,
+				cfg.AWSSecretAccessKey,
 				"",
 			),
 		},
@@ -58,21 +59,21 @@ func Handle(ev json.RawMessage, ctx *Context) (interface{}, error) {
 		logs.Fatal("failed to setup aws session", zap.Error(err))
 	}
 
-	svc := &line.Services{
+	svc := &conf.Services{
 		SQS:  sqs.New(sess),
 		DB:   dynamodb.New(sess),
 		Logs: logs,
 	}
 
 	//report loaded configuration for debugging purposes
-	logs.Info("loaded configuration", zap.String("conf", fmt.Sprintf("%+v", conf)), zap.String("ctx", fmt.Sprintf("%+v", ctx)))
+	logs.Info("loaded configuration", zap.String("conf", fmt.Sprintf("%+v", cfg)), zap.String("ctx", fmt.Sprintf("%+v", ctx)))
 
 	//find a handler that has a name that matches the the calling Lambda ARN
 	var testedExp []string
 	for exp, handler := range line.Handlers {
 		if exp.MatchString(ctx.InvokedFunctionARN) {
 			return handler(
-				conf,
+				cfg,
 				svc,
 				ev,
 			)

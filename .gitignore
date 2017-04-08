@@ -26,3 +26,4 @@ handler.zip
 secrets.env
 *.tfstate
 *.tfstate.backup
+actors.coverage

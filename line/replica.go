@@ -4,6 +4,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"github.com/microfactory/line/line/conf"
 	"github.com/pkg/errors"
 )
 
@@ -20,7 +21,7 @@ type Replica struct {
 }
 
 //PutReplica will put an replica with the condition the pk doesn't exist yet
-func PutReplica(conf *Conf, db DB, replica *Replica) (err error) {
+func PutReplica(conf *conf.Conf, db DB, replica *Replica) (err error) {
 	item, err := dynamodbattribute.MarshalMap(replica)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal item map")
@@ -37,7 +38,7 @@ func PutReplica(conf *Conf, db DB, replica *Replica) (err error) {
 }
 
 //DeleteReplica deletes a replica by pk
-func DeleteReplica(conf *Conf, db DB, pk ReplicaPK) (err error) {
+func DeleteReplica(conf *conf.Conf, db DB, pk ReplicaPK) (err error) {
 	ipk, err := dynamodbattribute.MarshalMap(pk)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal keys map")

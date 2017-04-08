@@ -15,11 +15,12 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/microfactory/line/line/client"
+	"github.com/microfactory/line/line/conf"
 	"github.com/pkg/errors"
 )
 
 //FindReplicas returns locality information for an evaluation
-func FindReplicas(conf *Conf, svc *Services, eval *Eval, pool *Pool) ([]*Replica, error) {
+func FindReplicas(conf *conf.Conf, svc *conf.Services, eval *Eval, pool *Pool) ([]*Replica, error) {
 	evalattr, err := dynamodbattribute.MarshalMap(eval)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to marshal eval")
@@ -72,7 +73,7 @@ func FindReplicas(conf *Conf, svc *Services, eval *Eval, pool *Pool) ([]*Replica
 }
 
 //Schedule will try to query the workers table for available room and conditionally update their capacity if it fits.
-func Schedule(conf *Conf, svc *Services, eval *Eval, pool *Pool, replicas []*Replica) (alloc *Alloc, err error) {
+func Schedule(conf *conf.Conf, svc *conf.Services, eval *Eval, pool *Pool, replicas []*Replica) (alloc *Alloc, err error) {
 	evalattr, err := dynamodbattribute.MarshalMap(eval)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to marshal eval")
@@ -178,7 +179,7 @@ func Schedule(conf *Conf, svc *Services, eval *Eval, pool *Pool, replicas []*Rep
 }
 
 //ReceiveEvals will long poll for scheduling messages on the scheduling queue of the pool
-func ReceiveEvals(conf *Conf, svc *Services, pool *Pool) (err error) {
+func ReceiveEvals(conf *conf.Conf, svc *conf.Services, pool *Pool) (err error) {
 	for {
 		var out *sqs.ReceiveMessageOutput
 		if out, err = svc.SQS.ReceiveMessage(&sqs.ReceiveMessageInput{
@@ -264,7 +265,7 @@ func ReceiveEvals(conf *Conf, svc *Services, pool *Pool) (err error) {
 }
 
 //HandleSchedule is a Lambda handler that periodically reads from the scheduling queue and queries the workers table for available capacity. If the capacity can be claimed an allocation is created.
-func HandleSchedule(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}, err error) {
+func HandleSchedule(conf *conf.Conf, svc *conf.Services, ev json.RawMessage) (res interface{}, err error) {
 
 	doneCh := make(chan struct{})
 	if err = svc.DB.ScanPages(&dynamodb.ScanInput{

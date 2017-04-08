@@ -5,6 +5,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"github.com/microfactory/line/line/conf"
 	"github.com/pkg/errors"
 )
 
@@ -31,7 +32,7 @@ var (
 )
 
 //PutNewWorker will put an worker with the condition the pk doesn't exist yet
-func PutNewWorker(conf *Conf, db DB, worker *Worker) (err error) {
+func PutNewWorker(conf *conf.Conf, db DB, worker *Worker) (err error) {
 	item, err := dynamodbattribute.MarshalMap(worker)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal item map")
@@ -57,7 +58,7 @@ func PutNewWorker(conf *Conf, db DB, worker *Worker) (err error) {
 }
 
 //DeleteWorker deletes a worker by pk
-func DeleteWorker(conf *Conf, db DB, pk WorkerPK) (err error) {
+func DeleteWorker(conf *conf.Conf, db DB, pk WorkerPK) (err error) {
 	ipk, err := dynamodbattribute.MarshalMap(pk)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal keys map")
@@ -83,7 +84,7 @@ func DeleteWorker(conf *Conf, db DB, pk WorkerPK) (err error) {
 }
 
 //UpdateWorkerTTL under the condition that it exists
-func UpdateWorkerTTL(conf *Conf, db DB, ttl int64, pk WorkerPK) (err error) {
+func UpdateWorkerTTL(conf *conf.Conf, db DB, ttl int64, pk WorkerPK) (err error) {
 	ipk, err := dynamodbattribute.MarshalMap(pk)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal keys map")
@@ -119,7 +120,7 @@ func UpdateWorkerTTL(conf *Conf, db DB, ttl int64, pk WorkerPK) (err error) {
 }
 
 //GetWorker returns a worker by its primary key
-func GetWorker(conf *Conf, db DB, pk WorkerPK) (worker *Worker, err error) {
+func GetWorker(conf *conf.Conf, db DB, pk WorkerPK) (worker *Worker, err error) {
 	ipk, err := dynamodbattribute.MarshalMap(pk)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to marshal keys map")

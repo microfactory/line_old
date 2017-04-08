@@ -5,6 +5,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"github.com/microfactory/line/line/conf"
 	"github.com/pkg/errors"
 )
 
@@ -29,7 +30,7 @@ var (
 )
 
 //PutNewPool will put an pool with the condition the pk doesn't exist yet
-func PutNewPool(conf *Conf, db DB, pool *Pool) (err error) {
+func PutNewPool(conf *conf.Conf, db DB, pool *Pool) (err error) {
 	item, err := dynamodbattribute.MarshalMap(pool)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal item map")
@@ -53,7 +54,7 @@ func PutNewPool(conf *Conf, db DB, pool *Pool) (err error) {
 }
 
 //UpdatePoolTTL under the condition that it exists
-func UpdatePoolTTL(conf *Conf, db DB, ttl int64, pk PoolPK) (err error) {
+func UpdatePoolTTL(conf *conf.Conf, db DB, ttl int64, pk PoolPK) (err error) {
 	ipk, err := dynamodbattribute.MarshalMap(pk)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal keys map")
@@ -89,7 +90,7 @@ func UpdatePoolTTL(conf *Conf, db DB, ttl int64, pk PoolPK) (err error) {
 }
 
 //GetActivePool will get a pool by its pk but errors if it's disbanded
-func GetActivePool(conf *Conf, db DB, pk PoolPK) (pool *Pool, err error) {
+func GetActivePool(conf *conf.Conf, db DB, pk PoolPK) (pool *Pool, err error) {
 	pool, err = GetPool(conf, db, pk)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get pool")
@@ -103,7 +104,7 @@ func GetActivePool(conf *Conf, db DB, pk PoolPK) (pool *Pool, err error) {
 }
 
 //GetPool returns a pool by its primary key
-func GetPool(conf *Conf, db DB, pk PoolPK) (pool *Pool, err error) {
+func GetPool(conf *conf.Conf, db DB, pk PoolPK) (pool *Pool, err error) {
 	ipk, err := dynamodbattribute.MarshalMap(pk)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to marshal keys map")
