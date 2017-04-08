@@ -48,6 +48,8 @@ func (c *Client) doRequest(in interface{}, out interface{}) (err error) {
 		loc.Path = path.Join(loc.Path, "SendHeartbeat")
 	case *ScheduleEvalInput:
 		loc.Path = path.Join(loc.Path, "ScheduleEval")
+	case *CompleteAllocInput:
+		loc.Path = path.Join(loc.Path, "CompleteAlloc")
 	default:
 		return errors.Errorf("no known endpoint for %T", in)
 	}
@@ -132,6 +134,16 @@ func (c *Client) SendHeartbeat(in *SendHeartbeatInput) (out *SendHeartbeatOutput
 //ScheduleEval will queue up an evaluation to be processed by the scheduling logic
 func (c *Client) ScheduleEval(in *ScheduleEvalInput) (out *ScheduleEvalOutput, err error) {
 	out = &ScheduleEvalOutput{}
+	err = c.doRequest(in, out)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to do HTTP request")
+	}
+	return out, nil
+}
+
+//CompleteAlloc indicates to the server that an allocation has ended
+func (c *Client) CompleteAlloc(in *CompleteAllocInput) (out *CompleteAllocOutput, err error) {
+	out = &CompleteAllocOutput{}
 	err = c.doRequest(in, out)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to do HTTP request")

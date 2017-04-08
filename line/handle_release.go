@@ -58,7 +58,7 @@ func releaseReplicas(conf *Conf, svc *Services, pool *Pool) (err error) {
 	return nil
 }
 
-func releaseWorker(conf *Conf, svc *Services, pool *Pool) (err error) {
+func releaseWorkers(conf *Conf, svc *Services, pool *Pool) (err error) {
 	condAttr, err := dynamodbattribute.MarshalMap(Worker{
 		TTL:      time.Now().Unix(),
 		WorkerPK: WorkerPK{PoolID: pool.PoolID},
@@ -109,6 +109,46 @@ func releaseWorker(conf *Conf, svc *Services, pool *Pool) (err error) {
 	return nil
 }
 
+func releaseAlloc(conf *Conf, svc *Services, alloc *Alloc) (err error) {
+	svc.Logs.Info("releasing alloc", zap.String("alloc", fmt.Sprintf("%+v", alloc)))
+
+	wpk, err := dynamodbattribute.MarshalMap(WorkerPK{PoolID: alloc.PoolID, WorkerID: alloc.WorkerID})
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal worker pk")
+	}
+
+	apk, err := dynamodbattribute.MarshalMap(alloc.AllocPK)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal worker pk")
+	}
+
+	allocSize, err := dynamodbattribute.Marshal(alloc.Eval.Size)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal alloc size")
+	}
+
+	if _, err = svc.DB.DeleteItem(&dynamodb.DeleteItemInput{
+		TableName: aws.String(conf.AllocsTableName),
+		Key:       apk,
+	}); err != nil {
+		return errors.Wrap(err, "failed to delete allocation, may never release")
+	}
+
+	if _, err := svc.DB.UpdateItem(&dynamodb.UpdateItemInput{
+		TableName:        aws.String(conf.WorkersTableName),
+		Key:              wpk,
+		UpdateExpression: aws.String(`SET cap = cap + :allocSize`),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":allocSize": allocSize,
+		},
+	}); err != nil {
+		//@TODO worker may have been removed, due do worker ttl or otherwise
+		return errors.Wrap(err, "failed to release capacity back to worker")
+	}
+
+	return nil
+}
+
 func releaseAllocs(conf *Conf, svc *Services, pool *Pool) (err error) {
 	condAttr, err := dynamodbattribute.MarshalMap(Alloc{
 		AllocPK: AllocPK{PoolID: pool.PoolID},
@@ -144,8 +184,6 @@ func releaseAllocs(conf *Conf, svc *Services, pool *Pool) (err error) {
 			continue
 		}
 
-		svc.Logs.Info("releasing alloc", zap.String("alloc", fmt.Sprintf("%+v", alloc)), zap.String("item", fmt.Sprintf("%+v", item)))
-
 		if alloc.WorkerID == "" {
 			svc.Logs.Error("allocation has no worker field")
 			continue
@@ -156,37 +194,18 @@ func releaseAllocs(conf *Conf, svc *Services, pool *Pool) (err error) {
 			continue
 		}
 
-		wpk, err := dynamodbattribute.MarshalMap(WorkerPK{PoolID: alloc.PoolID, WorkerID: alloc.WorkerID})
-		if err != nil {
-			svc.Logs.Error("failed to marshal worker pk", zap.Error(err))
-			continue
-		}
-
-		apk, err := dynamodbattribute.MarshalMap(alloc.AllocPK)
-		if err != nil {
-			svc.Logs.Error("failed to marshal worker pk", zap.Error(err))
-			continue
-		}
-
-		allocSize, err := dynamodbattribute.Marshal(alloc.Eval.Size)
-		if err != nil {
-			svc.Logs.Error("failed to marshal alloc size", zap.Error(err))
-			continue
-		}
-
 		evalMsg, err := json.Marshal(alloc.Eval)
 		if err != nil {
-			svc.Logs.Error("failed to marshal eval msg", zap.Error(err))
-			continue
+			return errors.Wrap(err, "failed to marshal eval msg")
 		}
 
+		//reschedule expired allocation
 		if alloc.Eval.Retry >= conf.MaxRetry {
 			if _, err = svc.SQS.SendMessage(&sqs.SendMessageInput{
 				QueueUrl:    aws.String(conf.ScheduleDLQueueURL),
 				MessageBody: aws.String(string(evalMsg)),
 			}); err != nil {
-				svc.Logs.Error("failed to retry eval on dead letter queue", zap.Error(err))
-				continue
+				return errors.Wrap(err, "failed to send eval to dead letter queue")
 			}
 		} else {
 			if _, err = svc.SQS.SendMessage(&sqs.SendMessageInput{
@@ -196,32 +215,17 @@ func releaseAllocs(conf *Conf, svc *Services, pool *Pool) (err error) {
 
 				aerr, ok := err.(awserr.Error)
 				if !ok || aerr.Code() != sqs.ErrCodeQueueDoesNotExist {
-					svc.Logs.Error("failed to re-send eval on pool queue", zap.Error(err))
-					continue
+					return errors.Wrap(err, "failed to re-send eval on pool queue")
 				}
 
-				//else we assume the scheduling queue was deleted because the pool itself is disbaned, we dont try to reschedule
+				//else we assume the scheduling queue was deleted because the pool itself is disbanded, we dont try to reschedule
 			}
 		}
 
-		if _, err = svc.DB.DeleteItem(&dynamodb.DeleteItemInput{
-			TableName: aws.String(conf.AllocsTableName),
-			Key:       apk,
-		}); err != nil {
-			svc.Logs.Error("failed to delete allocation, may never release", zap.Error(err), zap.String("double_release", alloc.WorkerID))
-			continue
-		}
-
-		if _, err := svc.DB.UpdateItem(&dynamodb.UpdateItemInput{
-			TableName:        aws.String(conf.WorkersTableName),
-			Key:              wpk,
-			UpdateExpression: aws.String(`SET cap = cap + :allocSize`),
-			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-				":allocSize": allocSize,
-			},
-		}); err != nil {
-			//@TODO worker may have been removed, due do worker ttl or otherwise
-			svc.Logs.Error("failed to release capacity back to worker", zap.Error(err))
+		//release the actual capacity
+		err = releaseAlloc(conf, svc, alloc)
+		if err != nil {
+			svc.Logs.Error("failed to release alloc", zap.Error(err))
 			continue
 		}
 	}
@@ -259,7 +263,7 @@ func HandleRelease(conf *Conf, svc *Services, ev json.RawMessage) (res interface
 				}
 
 				//@TODO do this concurrently(?)
-				err = releaseWorker(conf, svc, pool)
+				err = releaseWorkers(conf, svc, pool)
 				if err != nil {
 					svc.Logs.Error("failed to release workers", zap.String("pool", pool.PoolID), zap.Error(err))
 					continue

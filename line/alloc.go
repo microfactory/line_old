@@ -30,6 +30,34 @@ var (
 	ErrAllocNotExists = errors.New("alloc doesn't exist")
 )
 
+//GetAlloc returns a pool by its primary key
+func GetAlloc(conf *Conf, db DB, pk AllocPK) (alloc *Alloc, err error) {
+	ipk, err := dynamodbattribute.MarshalMap(pk)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to marshal keys map")
+	}
+
+	var out *dynamodb.GetItemOutput
+	if out, err = db.GetItem(&dynamodb.GetItemInput{
+		TableName: aws.String(conf.AllocsTableName),
+		Key:       ipk,
+	}); err != nil {
+		return nil, errors.Wrap(err, "failed to get item")
+	}
+
+	if out.Item == nil {
+		return nil, ErrAllocNotExists
+	}
+
+	alloc = &Alloc{}
+	err = dynamodbattribute.UnmarshalMap(out.Item, alloc)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal item")
+	}
+
+	return alloc, nil
+}
+
 //PutNewAlloc will put an alloc with the condition the pk doesn't exist yet
 func PutNewAlloc(conf *Conf, db DB, alloc *Alloc) (err error) {
 	item, err := dynamodbattribute.MarshalMap(alloc)

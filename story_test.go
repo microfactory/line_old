@@ -101,12 +101,18 @@ func TestUserStory_1(t *testing.T) {
 	_, err = c.SendHeartbeat(&client.SendHeartbeatInput{
 		PoolID:   pool.PoolID,
 		WorkerID: worker.WorkerID,
-		Datasets: []string{"d1"},
-		Allocs:   []string{allocs[0].AllocID},
+		Datasets: []string{"d1"},              //"I still have these datasets"
+		Allocs:   []string{allocs[0].AllocID}, //"I these allocs are still running"
 	})
 	ok(t, err)
 
-	//@TODO rename allocHandler to scheduleHandler
+	_, err = c.CompleteAlloc(&client.CompleteAllocInput{
+		PoolID:  pool.PoolID,
+		AllocID: allocs[0].AllocID,
+	})
+	ok(t, err)
+
+	//@TODO benchmark how many tasks per minute can be scheduled and completed per minute?
 
 	_, err = c.DisbandPool(&client.DisbandPoolInput{
 		PoolID: pool.PoolID,

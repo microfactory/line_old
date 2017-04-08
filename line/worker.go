@@ -57,15 +57,15 @@ func PutNewWorker(conf *Conf, db DB, worker *Worker) (err error) {
 }
 
 //DeleteWorker deletes a worker by pk
-func DeleteWorker(conf *Conf, db DB, wpk WorkerPK) (err error) {
-	pk, err := dynamodbattribute.MarshalMap(wpk)
+func DeleteWorker(conf *Conf, db DB, pk WorkerPK) (err error) {
+	ipk, err := dynamodbattribute.MarshalMap(pk)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal keys map")
 	}
 
 	if _, err = db.DeleteItem(&dynamodb.DeleteItemInput{
 		TableName:           aws.String(conf.WorkersTableName),
-		Key:                 pk,
+		Key:                 ipk,
 		ConditionExpression: aws.String("attribute_exists(#wrk)"),
 		ExpressionAttributeNames: map[string]*string{
 			"#wrk": aws.String("wrk"),
@@ -83,8 +83,8 @@ func DeleteWorker(conf *Conf, db DB, wpk WorkerPK) (err error) {
 }
 
 //UpdateWorkerTTL under the condition that it exists
-func UpdateWorkerTTL(conf *Conf, db DB, ttl int64, apk WorkerPK) (err error) {
-	pk, err := dynamodbattribute.MarshalMap(apk)
+func UpdateWorkerTTL(conf *Conf, db DB, ttl int64, pk WorkerPK) (err error) {
+	ipk, err := dynamodbattribute.MarshalMap(pk)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal keys map")
 	}
@@ -96,7 +96,7 @@ func UpdateWorkerTTL(conf *Conf, db DB, ttl int64, apk WorkerPK) (err error) {
 
 	if _, err = db.UpdateItem(&dynamodb.UpdateItemInput{
 		TableName:           aws.String(conf.WorkersTableName),
-		Key:                 pk,
+		Key:                 ipk,
 		UpdateExpression:    aws.String("SET #ttl = :ttl"),
 		ConditionExpression: aws.String("attribute_exists(#pool)"),
 		ExpressionAttributeNames: map[string]*string{
@@ -119,8 +119,8 @@ func UpdateWorkerTTL(conf *Conf, db DB, ttl int64, apk WorkerPK) (err error) {
 }
 
 //GetWorker returns a worker by its primary key
-func GetWorker(conf *Conf, db DB, wpk WorkerPK) (worker *Worker, err error) {
-	pk, err := dynamodbattribute.MarshalMap(wpk)
+func GetWorker(conf *Conf, db DB, pk WorkerPK) (worker *Worker, err error) {
+	ipk, err := dynamodbattribute.MarshalMap(pk)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to marshal keys map")
 	}
@@ -128,7 +128,7 @@ func GetWorker(conf *Conf, db DB, wpk WorkerPK) (worker *Worker, err error) {
 	var out *dynamodb.GetItemOutput
 	if out, err = db.GetItem(&dynamodb.GetItemInput{
 		TableName: aws.String(conf.WorkersTableName),
-		Key:       pk,
+		Key:       ipk,
 	}); err != nil {
 		return nil, errors.Wrap(err, "failed to get item")
 	}

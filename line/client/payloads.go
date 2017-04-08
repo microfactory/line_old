@@ -72,3 +72,12 @@ type Alloc struct {
 type ReceiveAllocsOutput struct {
 	Allocs []*Alloc `json:"allocs"`
 }
+
+//CompleteAllocInput is provided to complete an allocation
+type CompleteAllocInput struct {
+	PoolID  string `json:"pool_id"`
+	AllocID string `json:"alloc_id"`
+}
+
+//CompleteAllocOutput is returned when a worker is removed
+type CompleteAllocOutput struct{}

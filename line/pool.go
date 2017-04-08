@@ -53,8 +53,8 @@ func PutNewPool(conf *Conf, db DB, pool *Pool) (err error) {
 }
 
 //UpdatePoolTTL under the condition that it exists
-func UpdatePoolTTL(conf *Conf, db DB, ttl int64, apk PoolPK) (err error) {
-	pk, err := dynamodbattribute.MarshalMap(apk)
+func UpdatePoolTTL(conf *Conf, db DB, ttl int64, pk PoolPK) (err error) {
+	ipk, err := dynamodbattribute.MarshalMap(pk)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal keys map")
 	}
@@ -66,7 +66,7 @@ func UpdatePoolTTL(conf *Conf, db DB, ttl int64, apk PoolPK) (err error) {
 
 	if _, err = db.UpdateItem(&dynamodb.UpdateItemInput{
 		TableName:           aws.String(conf.PoolsTableName),
-		Key:                 pk,
+		Key:                 ipk,
 		UpdateExpression:    aws.String("SET #ttl = :ttl"),
 		ConditionExpression: aws.String("attribute_exists(#pool)"),
 		ExpressionAttributeNames: map[string]*string{
@@ -88,9 +88,23 @@ func UpdatePoolTTL(conf *Conf, db DB, ttl int64, apk PoolPK) (err error) {
 	return nil
 }
 
+//GetActivePool will get a pool by its pk but errors if it's disbanded
+func GetActivePool(conf *Conf, db DB, pk PoolPK) (pool *Pool, err error) {
+	pool, err = GetPool(conf, db, pk)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get pool")
+	}
+
+	if pool.TTL > 0 {
+		return nil, errors.Wrap(err, "pool has been disbanded")
+	}
+
+	return pool, nil
+}
+
 //GetPool returns a pool by its primary key
-func GetPool(conf *Conf, db DB, ppk PoolPK) (pool *Pool, err error) {
-	pk, err := dynamodbattribute.MarshalMap(ppk)
+func GetPool(conf *Conf, db DB, pk PoolPK) (pool *Pool, err error) {
+	ipk, err := dynamodbattribute.MarshalMap(pk)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to marshal keys map")
 	}
@@ -98,7 +112,7 @@ func GetPool(conf *Conf, db DB, ppk PoolPK) (pool *Pool, err error) {
 	var out *dynamodb.GetItemOutput
 	if out, err = db.GetItem(&dynamodb.GetItemInput{
 		TableName: aws.String(conf.PoolsTableName),
-		Key:       pk,
+		Key:       ipk,
 	}); err != nil {
 		return nil, errors.Wrap(err, "failed to get item")
 	}

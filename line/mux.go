@@ -87,7 +87,7 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 	}))
 
 	//
-	// Create Worker
+	// Register Worker
 	//
 	r.Post("/RegisterWorker", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
 		input := &client.RegisterWorkerInput{}
@@ -96,13 +96,9 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 			return err
 		}
 
-		pool, err := GetPool(conf, svc.DB, PoolPK{input.PoolID})
+		pool, err := GetActivePool(conf, svc.DB, PoolPK{input.PoolID})
 		if err != nil {
-			return errors.Wrap(err, "failed to get pool")
-		}
-
-		if pool.TTL > 0 {
-			return errors.Wrap(err, "pool has been disbanded")
+			return errors.Wrap(err, "failed to get active pool")
 		}
 
 		idb := make([]byte, 10)
@@ -170,6 +166,9 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 		return encodeOutput(w, &client.DisbandPoolOutput{})
 	}))
 
+	//
+	// SendHeartbeat
+	//
 	r.Post("/SendHeartbeat", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
 		input := &client.SendHeartbeatInput{}
 		err = decodeInput(r.Body, input)
@@ -177,13 +176,9 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 			return err
 		}
 
-		pool, err := GetPool(conf, svc.DB, PoolPK{input.PoolID})
+		pool, err := GetActivePool(conf, svc.DB, PoolPK{input.PoolID})
 		if err != nil {
-			return errors.Wrap(err, "failed to get pool")
-		}
-
-		if pool.TTL > 0 {
-			return errors.Wrap(err, "pool has been disbanded")
+			return errors.Wrap(err, "failed to get active pool")
 		}
 
 		now := time.Now().Unix()
@@ -224,6 +219,9 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 		return encodeOutput(w, &client.SendHeartbeatOutput{})
 	}))
 
+	//
+	// ScheduleEval
+	//
 	r.Post("/ScheduleEval", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
 		input := &client.ScheduleEvalInput{}
 		err = decodeInput(r.Body, input)
@@ -231,13 +229,9 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 			return err
 		}
 
-		pool, err := GetPool(conf, svc.DB, PoolPK{input.PoolID})
+		pool, err := GetActivePool(conf, svc.DB, PoolPK{input.PoolID})
 		if err != nil {
-			return errors.Wrap(err, "failed to get pool")
-		}
-
-		if pool.TTL > 0 {
-			return errors.Wrap(err, "pool has been disbanded")
+			return errors.Wrap(err, "failed to get active pool")
 		}
 
 		msg, err := json.Marshal(&Eval{Size: input.Size, Dataset: input.DatasetID})
@@ -253,6 +247,42 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 		}
 
 		return encodeOutput(w, &client.ScheduleEvalOutput{})
+	}))
+
+	//
+	// CompleteAlloc
+	//
+	r.Post("/CompleteAlloc", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
+		input := &client.CompleteAllocInput{}
+		err = decodeInput(r.Body, input)
+		if err != nil {
+			return err
+		}
+
+		pool, err := GetActivePool(conf, svc.DB, PoolPK{input.PoolID})
+		if err != nil {
+			return errors.Wrap(err, "failed to get active pool")
+		}
+
+		alloc, err := GetAlloc(conf, svc.DB, AllocPK{
+			PoolID:  pool.PoolID,
+			AllocID: input.AllocID,
+		})
+		if err != nil {
+			return errors.Wrap(err, "failed to get alloc")
+		}
+
+		//@TODO send the output/exit code somewhere?
+		//@TODO send releases on a queue(?)
+		//@TODO resend to scheduling queue on failure
+		//@TODO support for workflows, i.e auto-schedule new task?
+
+		err = releaseAlloc(conf, svc, alloc)
+		if err != nil {
+			return errors.Wrap(err, "failed to release alloc")
+		}
+
+		return encodeOutput(w, &client.CompleteAllocOutput{})
 	}))
 
 	r.NotFound(notFoundHandler)

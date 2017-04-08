@@ -37,15 +37,15 @@ func PutReplica(conf *Conf, db DB, replica *Replica) (err error) {
 }
 
 //DeleteReplica deletes a replica by pk
-func DeleteReplica(conf *Conf, db DB, rpk ReplicaPK) (err error) {
-	pk, err := dynamodbattribute.MarshalMap(rpk)
+func DeleteReplica(conf *Conf, db DB, pk ReplicaPK) (err error) {
+	ipk, err := dynamodbattribute.MarshalMap(pk)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal keys map")
 	}
 
 	if _, err = db.DeleteItem(&dynamodb.DeleteItemInput{
 		TableName: aws.String(conf.ReplicasTableName),
-		Key:       pk,
+		Key:       ipk,
 	}); err != nil {
 		return err
 	}
