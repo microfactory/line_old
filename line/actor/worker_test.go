@@ -62,3 +62,55 @@ func TestWorkerActorCRUD(t *testing.T) {
 	_, err = wmgr.FetchWorker(worker1.WorkerPK)
 	assert(t, actor.ErrWorkerNotExists == errors.Cause(err), "should give not existing err, got: %#v", err)
 }
+
+func TestWorkerCapacityOperations(t *testing.T) {
+	logs, err := zap.NewProduction()
+	ok(t, err)
+
+	conf := testconf(t)
+	sess := awssess(t, conf)
+	pmgr := actor.NewPoolManager(
+		actor.NewPoolManagerConf(conf),
+		sqs.New(sess),
+		dynamodb.New(sess),
+		logs,
+	)
+
+	pool, err := pmgr.CreatePool()
+	ok(t, err)
+	defer func() {
+		err = pool.Disband()
+		ok(t, err)
+	}()
+
+	wmgr := actor.NewWorkerManager(
+		actor.NewWorkerManagerConf(conf),
+		sqs.New(sess),
+		dynamodb.New(sess), logs, pool.PoolPK)
+
+	worker1, err := wmgr.CreateWorker(10, pool.PoolPK)
+	ok(t, err)
+
+	worker2, err := wmgr.CreateWorker(1, pool.PoolPK)
+	ok(t, err)
+
+	defer func() {
+		err = worker1.Delete()
+		ok(t, err)
+		err = worker2.Delete()
+		ok(t, err)
+	}()
+
+	t.Run("work with capacity", func(t *testing.T) {
+		workers, err := wmgr.ListWithCapacity(pool.PoolPK, 3)
+		ok(t, err)
+		assert(t, len(workers) == 1, "expected one worker with enough capacity, got %d", len(workers))
+		assert(t, workers[0].WorkerID == worker1.WorkerID, "expected worker id to equal %s", worker1.WorkerID)
+
+		err = worker1.SubtractCapacity(7)
+		ok(t, err)
+
+		err = worker1.SubtractCapacity(7)
+		assert(t, errors.Cause(err) == actor.ErrWorkerNotEnoughCapacity, "expected error indicating not enough capacity, got: %v", err)
+	})
+}

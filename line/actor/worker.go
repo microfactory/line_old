@@ -67,6 +67,38 @@ func (w *Worker) delete() (err error) {
 	return nil
 }
 
+//SubtractCapacity will lower the capacity of a worker but not below zero
+func (w *Worker) SubtractCapacity(cap int64) (err error) {
+	ipk, err := dynamodbattribute.MarshalMap(w.WorkerPK)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal keys map")
+	}
+
+	capattr, err := dynamodbattribute.Marshal(cap)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal min capacity")
+	}
+
+	if _, err = w.db.UpdateItem(&dynamodb.UpdateItemInput{
+		TableName:           aws.String(w.conf.WorkersTableName),
+		Key:                 ipk,
+		UpdateExpression:    aws.String(`SET cap = cap - :claim`),
+		ConditionExpression: aws.String("cap >= :claim"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":claim": capattr,
+		},
+	}); err != nil {
+		aerr, ok := err.(awserr.Error)
+		if !ok || aerr.Code() != dynamodb.ErrCodeConditionalCheckFailedException {
+			return errors.Wrap(err, "failed to update item")
+		}
+
+		return ErrWorkerNotEnoughCapacity
+	}
+
+	return nil
+}
+
 //Delete will remove the worker
 func (w *Worker) Delete() (err error) {
 	if _, err = w.sqs.DeleteQueue(&sqs.DeleteQueueInput{

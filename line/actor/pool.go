@@ -109,8 +109,12 @@ func (p *Pool) HandleEvals(s Scheduler, waitSeconds int64, doneCh <-chan struct{
 			WaitTimeSeconds:     aws.Int64(waitSeconds),
 		})
 		if err != nil {
-			p.logs.Error("failed to receive message", zap.Error(err))
-			return
+			aerr, ok := err.(awserr.Error)
+			if !ok || aerr.Code() != sqs.ErrCodeQueueDoesNotExist {
+				p.logs.Error("failed to receive message", zap.Error(err))
+			}
+
+			return //queue was removed by another process
 		}
 
 		//don't handle any more messages if we've received a done

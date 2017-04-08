@@ -68,7 +68,7 @@ func TestPoolEvalHandling(t *testing.T) {
 		ok(t, err)
 	}()
 
-	t.Run("schedule_noop", func(t *testing.T) {
+	t.Run("schedule noop scheduler", func(t *testing.T) {
 		doneCh := make(chan struct{})
 		go pool.HandleEvals(&actor.NopScheduler{}, 1, doneCh)
 		for i := 0; i < 25; i++ {
@@ -79,15 +79,22 @@ func TestPoolEvalHandling(t *testing.T) {
 		close(doneCh)
 	})
 
-	t.Run("schedule_workers", func(t *testing.T) {
-		wmgr := actor.NewWorkerManager(
-			actor.NewWorkerManagerConf(conf),
-			sqs.New(sess),
-			dynamodb.New(sess), logs, pool.PoolPK)
+	wmgr := actor.NewWorkerManager(
+		actor.NewWorkerManagerConf(conf),
+		sqs.New(sess),
+		dynamodb.New(sess), logs, pool.PoolPK)
 
+	w1, err := wmgr.CreateWorker(10, pool.PoolPK)
+	ok(t, err)
+	defer func() {
+		err = w1.Delete()
+		ok(t, err)
+	}()
+
+	t.Run("schedule with one worker", func(t *testing.T) {
 		doneCh := make(chan struct{})
-		go pool.HandleEvals(wmgr, 1, doneCh)
-		for i := 0; i < 25; i++ {
+		go pool.HandleEvals(wmgr.CreateScheduler(pool.PoolPK), 1, doneCh)
+		for i := 0; i < 5; i++ {
 			err = pool.ScheduleEval(&actor.Eval{})
 			ok(t, err)
 		}

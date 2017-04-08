@@ -13,10 +13,13 @@ import (
 
 var (
 	//ErrWorkerExists means a pool exists while it was expected not to
-	ErrWorkerExists = errors.New("pool already exists")
+	ErrWorkerExists = errors.New("worker already exists")
 
 	//ErrWorkerNotExists means a pool was not found while expecting it to exist
-	ErrWorkerNotExists = errors.New("pool doesn't exist")
+	ErrWorkerNotExists = errors.New("worker doesn't exist")
+
+	//ErrWorkerNotEnoughCapacity is returned when a workers has not enough cap
+	ErrWorkerNotEnoughCapacity = errors.New("worker doesn't have enough capacity")
 )
 
 //WorkerManagerConf configures the pool manager using the environment
@@ -109,9 +112,11 @@ func (wm *WorkerManager) getWorker(pk WorkerPK) (worker *Worker, err error) {
 	return worker, nil
 }
 
-//Schedule allows the worker manager to schedule evaluations
-func (wm *WorkerManager) Schedule(eval *Eval) (err error) {
-	return nil
+//CreateScheduler returns a worker scheduler that allows scheduling
+func (wm *WorkerManager) CreateScheduler(pool PoolPK) (s *WorkerScheduler) {
+	return &WorkerScheduler{
+		pool: pool,
+	}
 }
 
 //CreateWorker will insert a new worker
@@ -145,6 +150,50 @@ func (wm *WorkerManager) CreateWorker(cap int64, pool PoolPK) (worker *Worker, e
 	}
 
 	return worker, nil
+}
+
+//ListWithCapacity returns workers with equal or more of the given capacity
+func (wm *WorkerManager) ListWithCapacity(pool PoolPK, cap int64) (workers []*Worker, err error) {
+
+	poolattr, err := dynamodbattribute.Marshal(pool.PoolID)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to marshal pool id")
+	}
+
+	capattr, err := dynamodbattribute.Marshal(cap)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to marshal min capacity")
+	}
+
+	var capq *dynamodb.QueryOutput
+	if capq, err = wm.db.Query(&dynamodb.QueryInput{
+		TableName: aws.String(wm.conf.WorkersTableName),
+		IndexName: aws.String(wm.conf.WorkersCapIdxName),
+		Limit:     aws.Int64(10),
+		KeyConditionExpression: aws.String("#pool = :poolID AND #cap >= :evalSize"),
+		ExpressionAttributeNames: map[string]*string{
+			"#pool": aws.String("pool"),
+			"#cap":  aws.String("cap"),
+		},
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":poolID":   poolattr,
+			":evalSize": capattr,
+		},
+	}); err != nil {
+		return nil, errors.Wrap(err, "failed to query workers")
+	}
+
+	for _, item := range capq.Items {
+		worker := &Worker{}
+		err := dynamodbattribute.UnmarshalMap(item, worker)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to unmarshal worker")
+		}
+
+		workers = append(workers, worker)
+	}
+
+	return workers, nil
 }
 
 //FetchWorker will get an existing worker if it's not disbanded
