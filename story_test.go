@@ -12,6 +12,7 @@ import (
 	"github.com/kelseyhightower/envconfig"
 	"github.com/microfactory/line/line"
 	"github.com/microfactory/line/line/client"
+	"github.com/pkg/errors"
 )
 
 func testconf(tb testing.TB) (conf *line.Conf) {
@@ -41,81 +42,110 @@ func awssess(tb testing.TB, conf *line.Conf) (sess *session.Session) {
 	return sess
 }
 
-func endpoint(t *testing.T) string {
+func endpoint(tb testing.TB) string {
 	ep := os.Getenv("TEST_ENDPOINT")
 	if ep == "" {
-		t.Fatal("env variable TEST_ENDPOINT was empty")
+		tb.Fatal("env variable TEST_ENDPOINT was empty")
 	}
 
 	return ep
 }
 
-func TestUserStory_1(t *testing.T) {
-	ep := endpoint(t)
-	conf := testconf(t)
-	sess := awssess(t, conf)
+func nextalloc(c *client.Client, queueURL string) (alloc *client.Alloc, err error) {
+	for i := 0; i < 5; i++ {
+		out, err := c.ReceiveAllocs(&client.ReceiveAllocsInput{
+			WorkerQueueURL:      queueURL,
+			MaxNumberOfMessages: 1,
+			WaitTimeSeconds:     20,
+		})
+
+		if err != nil {
+			return nil, err
+		}
+
+		if len(out.Allocs) > 0 {
+			alloc = out.Allocs[0]
+			break
+		}
+	}
+
+	if alloc == nil {
+		return nil, errors.Errorf("didn't receive an alloc")
+	}
+
+	return alloc, nil
+}
+
+func BenchmarkUserStory_1(b *testing.B) {
+	ep := endpoint(b)
+	conf := testconf(b)
+	sess := awssess(b, conf)
 
 	c, err := client.NewClient(ep, sess)
-	ok(t, err)
+	ok(b, err)
 
 	pool, err := c.CreatePool(&client.CreatePoolInput{})
-	ok(t, err)
+	ok(b, err)
 
 	worker, err := c.RegisterWorker(&client.RegisterWorkerInput{
 		PoolID:   pool.PoolID,
 		Capacity: 10,
 	})
-	ok(t, err)
+	ok(b, err)
 
 	_, err = c.SendHeartbeat(&client.SendHeartbeatInput{
 		PoolID:   pool.PoolID,
 		WorkerID: worker.WorkerID,
 		Datasets: []string{"d1"},
 	})
-	ok(t, err)
+	ok(b, err)
 
 	_, err = c.ScheduleEval(&client.ScheduleEvalInput{
 		PoolID:    pool.PoolID,
 		Size:      3,
 		DatasetID: "d1",
 	})
-	ok(t, err)
+	ok(b, err)
 
-	allocs := []*client.Alloc{}
-	for i := 0; i < 5; i++ {
-		recv, err := c.ReceiveAllocs(&client.ReceiveAllocsInput{
-			WorkerQueueURL:      worker.QueueURL,
-			MaxNumberOfMessages: 1,
-			WaitTimeSeconds:     20,
-		})
-		ok(t, err)
-
-		if len(recv.Allocs) > 0 {
-			allocs = recv.Allocs
-			break
-		}
-	}
-
-	assert(t, (len(allocs) == 1), "expected to have received one alloc, got: %+v", allocs)
+	b.Logf("scheduled eval, waiting for alloc...")
+	alloc, err := nextalloc(c, worker.QueueURL)
+	ok(b, err)
 
 	_, err = c.SendHeartbeat(&client.SendHeartbeatInput{
 		PoolID:   pool.PoolID,
 		WorkerID: worker.WorkerID,
-		Datasets: []string{"d1"},              //"I still have these datasets"
-		Allocs:   []string{allocs[0].AllocID}, //"I these allocs are still running"
+		Datasets: []string{"d1"},          //"I still have these datasets"
+		Allocs:   []string{alloc.AllocID}, //"I still have these allocs running"
 	})
-	ok(t, err)
+	ok(b, err)
 
 	_, err = c.CompleteAlloc(&client.CompleteAllocInput{
 		PoolID:  pool.PoolID,
-		AllocID: allocs[0].AllocID,
+		AllocID: alloc.AllocID,
 	})
-	ok(t, err)
+	ok(b, err)
 
-	//@TODO benchmark how many tasks per minute can be scheduled and completed per minute?
+	b.Run("evals", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			_, err = c.ScheduleEval(&client.ScheduleEvalInput{
+				PoolID: pool.PoolID,
+				Size:   3,
+			})
+			ok(b, err)
+
+			alloc, err := nextalloc(c, worker.QueueURL)
+			ok(b, err)
+
+			_, err = c.CompleteAlloc(&client.CompleteAllocInput{
+				PoolID:  pool.PoolID,
+				AllocID: alloc.AllocID,
+			})
+			ok(b, err)
+		}
+	})
 
 	_, err = c.DisbandPool(&client.DisbandPoolInput{
 		PoolID: pool.PoolID,
 	})
-	ok(t, err)
+	ok(b, err)
 }
