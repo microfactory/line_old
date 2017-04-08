@@ -1,59 +1,19 @@
 package actor
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
+
+	"go.uber.org/zap"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/sqs"
-	"github.com/microfactory/line/line/conf"
 	"github.com/pkg/errors"
 )
-
-var (
-	//ErrPoolExists means a pool exists while it was expected not to
-	ErrPoolExists = errors.New("pool already exists")
-
-	//ErrPoolNotExists means a pool was not found while expecting it to exist
-	ErrPoolNotExists = errors.New("pool doesn't exist")
-)
-
-//PoolManagerConf configures the pool manager using the environment
-type PoolManagerConf struct {
-	AWSAccountID   string `envconfig:"AWS_ACCOUNT_ID"`
-	AWSRegion      string `envconfig:"AWS_REGION"`
-	PoolTTL        int64  `envconfig:"POOL_TTL"`
-	Deployment     string `envconfig:"DEPLOYMENT"`
-	PoolsTableName string `envconfig:"TABLE_NAME_POOLS"`
-}
-
-//NewPoolManagerConf will setup a pool manager conf
-func NewPoolManagerConf(cfg *conf.Conf) PoolManagerConf {
-	return PoolManagerConf{
-		PoolTTL:        cfg.PoolTTL,
-		Deployment:     cfg.Deployment,
-		PoolsTableName: cfg.PoolsTableName,
-	}
-}
-
-//PoolManager manages pools
-type PoolManager struct {
-	sqs  SQS
-	db   DB
-	conf PoolManagerConf
-}
-
-//NewPoolManager will setup a pool manager
-func NewPoolManager(conf PoolManagerConf, sqs SQS, db DB) *PoolManager {
-	return &PoolManager{
-		sqs:  sqs,
-		db:   db,
-		conf: conf,
-	}
-}
 
 //PoolPK is the primary key of a pool
 type PoolPK struct {
@@ -65,21 +25,25 @@ type Pool struct {
 	PoolPK
 	QueueURL string `dynamodbav:"que"`
 	TTL      int64  `dynamodbav:"ttl"`
+
+	conf PoolManagerConf
+	db   DB
+	sqs  SQS
+	logs *zap.Logger
 }
 
 //FmtScheduleQueueName allows prediction of the scheduling queue name by poolID
-func (pm *PoolManager) FmtScheduleQueueName(pk PoolPK) string {
-	return fmt.Sprintf("%s-s%s", pm.conf.Deployment, pk.PoolID)
+func (p *Pool) FmtScheduleQueueName() string {
+	return fmt.Sprintf("%s-s%s", p.conf.Deployment, p.PoolID)
 }
 
 //FmtScheduleQueueURL allows predicting the scheduling queue url based on conf
-func (pm *PoolManager) FmtScheduleQueueURL(pk PoolPK) string {
-	return fmt.Sprintf("https://sqs.%s.amazonaws.com/%s/%s", pm.conf.AWSRegion, pm.conf.AWSAccountID, pm.FmtScheduleQueueName(pk))
+func (p *Pool) FmtScheduleQueueURL() string {
+	return fmt.Sprintf("https://sqs.%s.amazonaws.com/%s/%s", p.conf.AWSRegion, p.conf.AWSAccountID, p.FmtScheduleQueueName())
 }
 
-//updateTTL under the condition that it exists
-func (pm *PoolManager) updateTTL(pk PoolPK, ttl int64) (err error) {
-	ipk, err := dynamodbattribute.MarshalMap(pk)
+func (p *Pool) updateTTL(ttl int64) (err error) {
+	ipk, err := dynamodbattribute.MarshalMap(p.PoolPK)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal keys map")
 	}
@@ -89,8 +53,8 @@ func (pm *PoolManager) updateTTL(pk PoolPK, ttl int64) (err error) {
 		return errors.Wrap(err, "failed to marshal new ttl")
 	}
 
-	if _, err = pm.db.UpdateItem(&dynamodb.UpdateItemInput{
-		TableName:           aws.String(pm.conf.PoolsTableName),
+	if _, err = p.db.UpdateItem(&dynamodb.UpdateItemInput{
+		TableName:           aws.String(p.conf.PoolsTableName),
 		Key:                 ipk,
 		UpdateExpression:    aws.String("SET #ttl = :ttl"),
 		ConditionExpression: aws.String("attribute_exists(#pool)"),
@@ -113,107 +77,87 @@ func (pm *PoolManager) updateTTL(pk PoolPK, ttl int64) (err error) {
 	return nil
 }
 
-func (pm *PoolManager) getPool(pk PoolPK) (pool *Pool, err error) {
-	ipk, err := dynamodbattribute.MarshalMap(pk)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to marshal keys map")
-	}
-
-	var out *dynamodb.GetItemOutput
-	if out, err = pm.db.GetItem(&dynamodb.GetItemInput{
-		TableName: aws.String(pm.conf.PoolsTableName),
-		Key:       ipk,
-	}); err != nil {
-		return nil, errors.Wrap(err, "failed to get item")
-	}
-
-	if out.Item == nil {
-		return nil, ErrPoolNotExists
-	}
-
-	pool = &Pool{}
-	err = dynamodbattribute.UnmarshalMap(out.Item, pool)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to unmarshal item")
-	}
-
-	return pool, nil
-}
-
-func (pm *PoolManager) putNewPool(pool *Pool) (err error) {
-	item, err := dynamodbattribute.MarshalMap(pool)
-	if err != nil {
-		return errors.Wrap(err, "failed to marshal item map")
-	}
-
-	if _, err = pm.db.PutItem(&dynamodb.PutItemInput{
-		TableName:                aws.String(pm.conf.PoolsTableName),
-		ConditionExpression:      aws.String("attribute_not_exists(#pool)"),
-		ExpressionAttributeNames: map[string]*string{"#pool": aws.String("pool")},
-		Item: item,
+//Disband will mark the pool for final deletion through a background process
+func (p *Pool) Disband() (err error) {
+	if _, err = p.sqs.DeleteQueue(&sqs.DeleteQueueInput{
+		QueueUrl: aws.String(p.FmtScheduleQueueURL()),
 	}); err != nil {
 		aerr, ok := err.(awserr.Error)
-		if !ok || aerr.Code() != dynamodb.ErrCodeConditionalCheckFailedException {
-			return errors.Wrap(err, "failed to put item")
+		if !ok || aerr.Code() != sqs.ErrCodeQueueDoesNotExist {
+			return errors.Wrap(err, "failed to remove queue")
 		}
 
-		return ErrPoolExists
+		return ErrPoolNotExists
+	}
+
+	ttl := time.Now().Unix() + p.conf.PoolTTL
+	err = p.updateTTL(ttl)
+	if err != nil {
+		return errors.Wrap(err, "failed to update ttl")
 	}
 
 	return nil
 }
 
-//CreatePool creates a new pool
-func (pm *PoolManager) CreatePool() (pool *Pool, err error) {
-	pool = &Pool{}
-	pool.PoolID, err = GenEntityID()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to generate id")
-	}
+//HandleEvals will start receiving eval messages until doneCh is closed
+func (p *Pool) HandleEvals(s Scheduler, waitSeconds int64, doneCh <-chan struct{}) {
+	for {
+		out, err := p.sqs.ReceiveMessage(&sqs.ReceiveMessageInput{
+			QueueUrl:            aws.String(p.QueueURL),
+			VisibilityTimeout:   aws.Int64(1),
+			MaxNumberOfMessages: aws.Int64(10),
+			WaitTimeSeconds:     aws.Int64(waitSeconds),
+		})
+		if err != nil {
+			p.logs.Error("failed to receive message", zap.Error(err))
+			return
+		}
 
-	var qout *sqs.CreateQueueOutput
-	if qout, err = pm.sqs.CreateQueue(&sqs.CreateQueueInput{
-		QueueName: aws.String(pm.FmtScheduleQueueName(pool.PoolPK)),
-	}); err != nil {
-		return nil, errors.Wrap(err, "failed to create schedule queue")
-	}
+		//don't handle any more messages if we've received a done
+		select {
+		case <-doneCh:
+			return
+		default:
+		}
 
-	pool.QueueURL = aws.StringValue(qout.QueueUrl)
-	pool.TTL = 1
-	err = pm.putNewPool(pool)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to put pool")
-	}
+		//schedule each eval
+		for _, msg := range out.Messages {
+			eval := &Eval{}
+			err = json.Unmarshal([]byte(aws.StringValue(msg.Body)), eval)
+			if err != nil {
+				p.logs.Error("failed to unmarshal eval msg", zap.Error(err))
+				continue
+			}
 
-	return pool, nil
+			err = s.Schedule(eval)
+			if err != nil {
+				p.logs.Error("failed to schedule eval", zap.Error(err))
+				continue
+			}
+
+			if _, err = p.sqs.DeleteMessage(&sqs.DeleteMessageInput{
+				QueueUrl:      aws.String(p.QueueURL),
+				ReceiptHandle: msg.ReceiptHandle,
+			}); err != nil {
+				p.logs.Error("failed to delete eval msg", zap.Error(err))
+				continue
+			}
+		}
+	}
 }
 
-//FetchPool will get an existing pool if it's not disbanded
-func (pm *PoolManager) FetchPool(pk PoolPK) (pool *Pool, err error) {
-	pool, err = pm.getPool(pk)
+//ScheduleEval will plan an evaluation for scheduling on the pool
+func (p *Pool) ScheduleEval(eval *Eval) (err error) {
+	msg, err := json.Marshal(eval)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get pool")
+		return errors.Wrap(err, "failed to encode eval message")
 	}
 
-	if pool.TTL != 1 {
-		return nil, ErrPoolNotExists
-	}
-
-	return pool, nil
-}
-
-//DisbandPool will mark the pool for ttl garbage collection
-func (pm *PoolManager) DisbandPool(pk PoolPK) (err error) {
-	if _, err = pm.sqs.DeleteQueue(&sqs.DeleteQueueInput{
-		QueueUrl: aws.String(pm.FmtScheduleQueueURL(pk)),
+	if _, err := p.sqs.SendMessage(&sqs.SendMessageInput{
+		QueueUrl:    aws.String(p.QueueURL),
+		MessageBody: aws.String(string(msg)),
 	}); err != nil {
-		return errors.Wrap(err, "failed to remove queue")
-	}
-
-	ttl := time.Now().Unix() + pm.conf.PoolTTL
-	err = pm.updateTTL(pk, ttl)
-	if err != nil {
-		return errors.Wrap(err, "failed to update ttl")
+		return errors.Wrap(err, "failed to send eval message")
 	}
 
 	return nil

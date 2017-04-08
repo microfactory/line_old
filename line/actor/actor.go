@@ -9,6 +9,19 @@ import (
 	"github.com/pkg/errors"
 )
 
+//Scheduler takes evals and turns them into allocs
+type Scheduler interface {
+	Schedule(eval *Eval) (err error)
+}
+
+//NopScheduler is a scheduler that does nothing
+type NopScheduler struct{}
+
+//Schedule implementation that does nothing
+func (s *NopScheduler) Schedule(eval *Eval) (err error) {
+	return nil
+}
+
 //SQS is our alias for the sqs connection
 type SQS sqsiface.SQSAPI
 
