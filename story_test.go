@@ -61,7 +61,7 @@ func TestUserStory_1(t *testing.T) {
 	pool, err := c.CreatePool(&client.CreatePoolInput{})
 	ok(t, err)
 
-	worker, err := c.CreateWorker(&client.CreateWorkerInput{
+	worker, err := c.RegisterWorker(&client.RegisterWorkerInput{
 		PoolID:   pool.PoolID,
 		Capacity: 10,
 	})
@@ -106,7 +106,6 @@ func TestUserStory_1(t *testing.T) {
 	})
 	ok(t, err)
 
-	//@TODO rename createWorker to offerCapacity?
 	//@TODO rename allocHandler to scheduleHandler
 
 	_, err = c.DisbandPool(&client.DisbandPoolInput{

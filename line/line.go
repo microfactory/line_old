@@ -50,7 +50,7 @@ type Handler func(conf *Conf, svc *Services, ev json.RawMessage) (interface{}, e
 
 //Handlers map arn suffixes to actual event handlers
 var Handlers = map[*regexp.Regexp]Handler{
-	regexp.MustCompile(`-alloc$`):   HandleAlloc,
-	regexp.MustCompile(`-release$`): HandleRelease,
-	regexp.MustCompile(`-gateway$`): HandleGateway,
+	regexp.MustCompile(`-schedule$`): HandleSchedule,
+	regexp.MustCompile(`-release$`):  HandleRelease,
+	regexp.MustCompile(`-gateway$`):  HandleGateway,
 }

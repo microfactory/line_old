@@ -263,8 +263,8 @@ func ReceiveEvals(conf *Conf, svc *Services, pool *Pool) (err error) {
 	}
 }
 
-//HandleAlloc is a Lambda handler that periodically reads from the scheduling queue and queries the workers table for available capacity. If the capacity can be claimed an allocation is created.
-func HandleAlloc(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}, err error) {
+//HandleSchedule is a Lambda handler that periodically reads from the scheduling queue and queries the workers table for available capacity. If the capacity can be claimed an allocation is created.
+func HandleSchedule(conf *Conf, svc *Services, ev json.RawMessage) (res interface{}, err error) {
 
 	doneCh := make(chan struct{})
 	if err = svc.DB.ScanPages(&dynamodb.ScanInput{

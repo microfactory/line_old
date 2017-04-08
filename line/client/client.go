@@ -42,8 +42,8 @@ func (c *Client) doRequest(in interface{}, out interface{}) (err error) {
 		loc.Path = path.Join(loc.Path, "CreatePool")
 	case *DisbandPoolInput:
 		loc.Path = path.Join(loc.Path, "DisbandPool")
-	case *CreateWorkerInput:
-		loc.Path = path.Join(loc.Path, "CreateWorker")
+	case *RegisterWorkerInput:
+		loc.Path = path.Join(loc.Path, "RegisterWorker")
 	case *SendHeartbeatInput:
 		loc.Path = path.Join(loc.Path, "SendHeartbeat")
 	case *ScheduleEvalInput:
@@ -96,9 +96,9 @@ func (c *Client) CreatePool(in *CreatePoolInput) (out *CreatePoolOutput, err err
 	return out, nil
 }
 
-//CreateWorker will setup a worker that provides capacity to a pool
-func (c *Client) CreateWorker(in *CreateWorkerInput) (out *CreateWorkerOutput, err error) {
-	out = &CreateWorkerOutput{}
+//RegisterWorker will setup a worker that provides capacity to a pool
+func (c *Client) RegisterWorker(in *RegisterWorkerInput) (out *RegisterWorkerOutput, err error) {
+	out = &RegisterWorkerOutput{}
 	err = c.doRequest(in, out)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to do HTTP request")

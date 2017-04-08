@@ -89,8 +89,8 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 	//
 	// Create Worker
 	//
-	r.Post("/CreateWorker", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
-		input := &client.CreateWorkerInput{}
+	r.Post("/RegisterWorker", errh(func(w http.ResponseWriter, r *http.Request) (err error) {
+		input := &client.RegisterWorkerInput{}
 		err = decodeInput(r.Body, input)
 		if err != nil {
 			return err
@@ -134,7 +134,7 @@ func Mux(conf *Conf, svc *Services) http.Handler {
 			return errors.Wrap(err, "failed to put worker")
 		}
 
-		output := &client.CreateWorkerOutput{
+		output := &client.RegisterWorkerOutput{
 			PoolID:   worker.PoolID,
 			WorkerID: worker.WorkerID,
 			QueueURL: worker.QueueURL,

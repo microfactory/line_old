@@ -19,11 +19,11 @@ resource "aws_lambda_permission" "release_event" {
   action = "lambda:InvokeFunction"
   function_name = "${aws_lambda_function.release.arn}"
   principal = "events.amazonaws.com"
-  source_arn = "${aws_cloudwatch_event_rule.release_tick.arn}"
+  source_arn = "${aws_cloudwatch_event_rule.round_tick.arn}"
 }
 
-resource "aws_lambda_function" "alloc" {
-  function_name = "${data.template_file.p.rendered}-alloc"
+resource "aws_lambda_function" "schedule" {
+  function_name = "${data.template_file.p.rendered}-schedule"
   description = "allocate worker capacity to task"
   filename = "handler.zip"
   source_code_hash = "${base64sha256(file("handler.zip"))}"
@@ -38,12 +38,12 @@ resource "aws_lambda_function" "alloc" {
   }
 }
 
-resource "aws_lambda_permission" "alloc_event" {
+resource "aws_lambda_permission" "schedule_event" {
   statement_id = "${data.template_file.p.rendered}-event"
   action = "lambda:InvokeFunction"
-  function_name = "${aws_lambda_function.alloc.arn}"
+  function_name = "${aws_lambda_function.schedule.arn}"
   principal = "events.amazonaws.com"
-  source_arn = "${aws_cloudwatch_event_rule.alloc_tick.arn}"
+  source_arn = "${aws_cloudwatch_event_rule.round_tick.arn}"
 }
 
 resource "aws_lambda_function" "gateway" {

@@ -8,14 +8,14 @@ type CreatePoolOutput struct {
 	PoolID string `json:"pool_id"`
 }
 
-//CreateWorkerInput will create a worker in a pool
-type CreateWorkerInput struct {
+//RegisterWorkerInput will off the pool capacity to work with
+type RegisterWorkerInput struct {
 	PoolID   string `json:"pool_id"`
 	Capacity int    `json:"capacity"`
 }
 
-//CreateWorkerOutput is returned when a worker is added to a pool
-type CreateWorkerOutput struct {
+//RegisterWorkerOutput is returned when a worker is added to a pool
+type RegisterWorkerOutput struct {
 	PoolID   string `json:"pool_id"`
 	WorkerID string `json:"worker_id"`
 	QueueURL string `json:"queue_url"`
