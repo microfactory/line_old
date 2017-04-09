@@ -31,8 +31,8 @@ func TestWorkerActorCRUD(t *testing.T) {
 		ok(t, err)
 	}()
 
-	wmgr := actor.NewWorkerManager(
-		actor.NewWorkerManagerConf(conf),
+	wmgr := actor.NewWorkers(
+		actor.NewWorkersConf(conf),
 		sqs.New(sess),
 		dynamodb.New(sess), logs, pool.PoolPK)
 
@@ -53,10 +53,10 @@ func TestWorkerActorCRUD(t *testing.T) {
 	assert(t, (worker2.QueueURL == worker1.QueueURL), "%#v %#v", worker2, worker1)
 	assert(t, (worker2.TTL == worker1.TTL), "%#v %#v", worker2, worker1)
 
-	err = worker2.Delete()
+	err = wmgr.Delete(worker2.WorkerPK)
 	ok(t, err)
 
-	err = worker2.Delete()
+	err = wmgr.Delete(worker2.WorkerPK)
 	assert(t, actor.ErrWorkerNotExists == errors.Cause(err), "should give not existing err, got: %#v", err)
 
 	_, err = wmgr.FetchWorker(worker1.WorkerPK)
@@ -83,8 +83,8 @@ func TestWorkerCapacityOperations(t *testing.T) {
 		ok(t, err)
 	}()
 
-	wmgr := actor.NewWorkerManager(
-		actor.NewWorkerManagerConf(conf),
+	wmgr := actor.NewWorkers(
+		actor.NewWorkersConf(conf),
 		sqs.New(sess),
 		dynamodb.New(sess), logs, pool.PoolPK)
 
@@ -95,9 +95,9 @@ func TestWorkerCapacityOperations(t *testing.T) {
 	ok(t, err)
 
 	defer func() {
-		err = worker1.Delete()
+		err = wmgr.Delete(worker1.WorkerPK)
 		ok(t, err)
-		err = worker2.Delete()
+		err = wmgr.Delete(worker2.WorkerPK)
 		ok(t, err)
 	}()
 
@@ -107,10 +107,10 @@ func TestWorkerCapacityOperations(t *testing.T) {
 		assert(t, len(workers) == 1, "expected one worker with enough capacity, got %d", len(workers))
 		assert(t, workers[0].WorkerID == worker1.WorkerID, "expected worker id to equal %s", worker1.WorkerID)
 
-		err = worker1.SubtractCapacity(7)
+		err = wmgr.SubtractCapacity(worker1.WorkerPK, 7)
 		ok(t, err)
 
-		err = worker1.SubtractCapacity(7)
+		err = wmgr.SubtractCapacity(worker1.WorkerPK, 7)
 		assert(t, errors.Cause(err) == actor.ErrWorkerNotEnoughCapacity, "expected error indicating not enough capacity, got: %v", err)
 	})
 }

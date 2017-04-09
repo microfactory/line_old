@@ -2,6 +2,7 @@ package actor_test
 
 import (
 	"testing"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -79,15 +80,15 @@ func TestPoolEvalHandling(t *testing.T) {
 		close(doneCh)
 	})
 
-	wmgr := actor.NewWorkerManager(
-		actor.NewWorkerManagerConf(conf),
+	wmgr := actor.NewWorkers(
+		actor.NewWorkersConf(conf),
 		sqs.New(sess),
 		dynamodb.New(sess), logs, pool.PoolPK)
 
 	w1, err := wmgr.CreateWorker(10, pool.PoolPK)
 	ok(t, err)
 	defer func() {
-		err = w1.Delete()
+		err = wmgr.Delete(w1.WorkerPK)
 		ok(t, err)
 	}()
 
@@ -95,10 +96,11 @@ func TestPoolEvalHandling(t *testing.T) {
 		doneCh := make(chan struct{})
 		go pool.HandleEvals(wmgr.CreateScheduler(pool.PoolPK), 1, doneCh)
 		for i := 0; i < 5; i++ {
-			err = pool.ScheduleEval(&actor.Eval{})
+			err = pool.ScheduleEval(&actor.Eval{MinCapacity: 3})
 			ok(t, err)
 		}
 
+		time.Sleep(time.Second * 3)
 		close(doneCh)
 	})
 

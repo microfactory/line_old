@@ -17,6 +17,9 @@ var (
 
 	//ErrPoolNotExists means a pool was not found while expecting it to exist
 	ErrPoolNotExists = errors.New("pool doesn't exist")
+
+	//ErrPoolNotEnoughCapacity is returned when the pool doesn't have enough cap
+	ErrPoolNotEnoughCapacity = errors.New("pool doesn't have enough capacity")
 )
 
 //PoolManagerConf configures the pool manager using the environment
