@@ -12,16 +12,8 @@ import (
 //DB is our local alias for the dynamo interface
 type DB dynamodbiface.DynamoDBAPI
 
-var (
-	//ErrItemExists is returned when a conditional for existence failed
-	ErrItemExists = errors.New("item already exists")
-
-	//ErrItemNotExists is returned when an item is not available in the database
-	ErrItemNotExists = errors.New("item doesn't exist")
-)
-
 // delete an item from the table by primary key
-func delete(db DB, tname string, pk interface{}, existAttr string) (err error) {
+func delete(db DB, tname string, pk interface{}, cond *Exp, condErr error) (err error) {
 	ipk, err := dynamodbattribute.MarshalMap(pk)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal primary key")
@@ -32,12 +24,10 @@ func delete(db DB, tname string, pk interface{}, existAttr string) (err error) {
 		Key:       ipk,
 	}
 
-	if existAttr != "" {
-		inp.ConditionExpression = aws.String(
-			"attribute_exists(#" + existAttr + ")",
-		)
-		inp.ExpressionAttributeNames = map[string]*string{
-			"#" + existAttr: aws.String(existAttr),
+	if cond != nil {
+		inp.ConditionExpression, inp.ExpressionAttributeNames, inp.ExpressionAttributeValues, err = cond.Get()
+		if err != nil {
+			return errors.Wrap(err, "error in conditional expression")
 		}
 	}
 
@@ -47,14 +37,59 @@ func delete(db DB, tname string, pk interface{}, existAttr string) (err error) {
 			return errors.Wrap(err, "failed to delete item")
 		}
 
-		return ErrItemNotExists
+		if condErr != nil {
+			return condErr
+		}
+		return err
+	}
+
+	return nil
+}
+
+// update an item with primary key pk with exp
+func update(db DB, tname string, pk interface{}, upd *Exp, cond *Exp, condErr error) (err error) {
+	ipk, err := dynamodbattribute.MarshalMap(pk)
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal primary key")
+	}
+
+	inp := &dynamodb.UpdateItemInput{
+		Key:       ipk,
+		TableName: aws.String(tname),
+	}
+
+	if upd != nil {
+		inp.UpdateExpression, inp.ExpressionAttributeNames, inp.ExpressionAttributeValues, err = upd.Get()
+		if err != nil {
+			return errors.Wrap(err, "error in update expression")
+		}
+	}
+
+	if cond != nil {
+		inp.ConditionExpression, inp.ExpressionAttributeNames, inp.ExpressionAttributeValues, err = cond.GetMerged(inp.ExpressionAttributeNames, inp.ExpressionAttributeValues)
+		if err != nil {
+			return errors.Wrap(err, "error in conditional expression")
+		}
+	}
+
+	if _, err = db.UpdateItem(inp); err != nil {
+		aerr, ok := err.(awserr.Error)
+		if !ok || aerr.Code() != dynamodb.ErrCodeConditionalCheckFailedException {
+			return errors.Wrap(err, "failed to put item")
+		}
+
+		if condErr != nil {
+			return condErr
+		}
+
+		return err
 	}
 
 	return nil
 }
 
 // get will attempt to get an item by pk and deserialize into item
-func get(db DB, tname string, pk interface{}, item interface{}) (err error) {
+func get(db DB, tname string, pk interface{}, item interface{}, errItemNil error) (err error) {
 	ipk, err := dynamodbattribute.MarshalMap(pk)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal primary key")
@@ -69,7 +104,7 @@ func get(db DB, tname string, pk interface{}, item interface{}) (err error) {
 	}
 
 	if out.Item == nil {
-		return ErrItemNotExists
+		return errItemNil
 	}
 
 	err = dynamodbattribute.UnmarshalMap(out.Item, item)
@@ -81,7 +116,7 @@ func get(db DB, tname string, pk interface{}, item interface{}) (err error) {
 }
 
 // put an item into dynamodb in the provided table
-func put(db DB, tname string, item interface{}, existAttr string) (err error) {
+func put(db DB, tname string, item interface{}, cond *Exp, condErr error) (err error) {
 	it, err := dynamodbattribute.MarshalMap(item)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal item map")
@@ -92,12 +127,10 @@ func put(db DB, tname string, item interface{}, existAttr string) (err error) {
 		Item:      it,
 	}
 
-	if existAttr != "" {
-		inp.ConditionExpression = aws.String(
-			"attribute_not_exists(#" + existAttr + ")",
-		)
-		inp.ExpressionAttributeNames = map[string]*string{
-			"#" + existAttr: aws.String(existAttr),
+	if cond != nil {
+		inp.ConditionExpression, inp.ExpressionAttributeNames, inp.ExpressionAttributeValues, err = cond.Get()
+		if err != nil {
+			return errors.Wrap(err, "error in conditional expression")
 		}
 	}
 
@@ -107,7 +140,10 @@ func put(db DB, tname string, item interface{}, existAttr string) (err error) {
 			return errors.Wrap(err, "failed to put item")
 		}
 
-		return ErrItemExists
+		if condErr != nil {
+			return condErr
+		}
+		return err
 	}
 
 	return nil
