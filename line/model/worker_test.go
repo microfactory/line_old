@@ -55,6 +55,11 @@ func TestWorkerCRUD(t *testing.T) {
 	assert(t, w3.Capacity == 12, "capacity should have been updated")
 	ok(t, err)
 
+	w4, err := wt.GetMin(w1.WorkerPK)
+	ok(t, err)
+	assert(t, w4.Capacity == 0, "capacity should not havee been projected, got: %+v", w4.Capacity)
+	ok(t, err)
+
 	err = wt.Delete(w2.WorkerPK)
 	ok(t, err)
 

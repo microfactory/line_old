@@ -36,7 +36,13 @@ func NewWorkerTable(db DB, cfg *Conf) *WorkerTable {
 //Get a worker from the base table
 func (t *WorkerTable) Get(pk WorkerPK) (i *Worker, err error) {
 	i = &Worker{}
-	return i, get(t.db, t.cfg.WorkersTableName, pk, i, ErrWorkerNotExists)
+	return i, get(t.db, t.cfg.WorkersTableName, pk, i, nil, ErrWorkerNotExists)
+}
+
+//GetMin a worker from the base table without all attributes
+func (t *WorkerTable) GetMin(pk WorkerPK) (i *Worker, err error) {
+	i = &Worker{}
+	return i, get(t.db, t.cfg.WorkersTableName, pk, i, NewExp("#pool, wrk").Name("#pool", "pool"), ErrWorkerNotExists)
 }
 
 //Put a worker in the base table

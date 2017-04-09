@@ -89,17 +89,26 @@ func update(db DB, tname string, pk interface{}, upd *Exp, cond *Exp, condErr er
 }
 
 // get will attempt to get an item by pk and deserialize into item
-func get(db DB, tname string, pk interface{}, item interface{}, errItemNil error) (err error) {
+func get(db DB, tname string, pk interface{}, item interface{}, proj *Exp, errItemNil error) (err error) {
 	ipk, err := dynamodbattribute.MarshalMap(pk)
 	if err != nil {
 		return errors.Wrap(err, "failed to marshal primary key")
 	}
 
-	var out *dynamodb.GetItemOutput
-	if out, err = db.GetItem(&dynamodb.GetItemInput{
+	inp := &dynamodb.GetItemInput{
 		TableName: aws.String(tname),
 		Key:       ipk,
-	}); err != nil {
+	}
+
+	if proj != nil {
+		inp.ProjectionExpression, inp.ExpressionAttributeNames, _, err = proj.Get()
+		if err != nil {
+			return errors.Wrap(err, "error in conditional expression")
+		}
+	}
+
+	var out *dynamodb.GetItemOutput
+	if out, err = db.GetItem(inp); err != nil {
 		return errors.Wrap(err, "failed to get item")
 	}
 
