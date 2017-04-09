@@ -33,6 +33,15 @@ func NewWorkerTable(db DB, cfg *Conf) *WorkerTable {
 	return &WorkerTable{db, cfg}
 }
 
+//Query all workers in a pool
+func (t *WorkerTable) Query(pool PoolPK) (i []*Worker, err error) {
+	return i, query(t.db, t.cfg.WorkersTableName, "", func() interface{} {
+		w := &Worker{}
+		i = append(i, w)
+		return w
+	}, nil, nil, NewExp("#pool = :poolID").Name("#pool", "pool").Value(":poolID", pool.PoolID))
+}
+
 //Get a worker from the base table
 func (t *WorkerTable) Get(pk WorkerPK) (i *Worker, err error) {
 	i = &Worker{}

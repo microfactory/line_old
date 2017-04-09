@@ -69,3 +69,42 @@ func TestWorkerCRUD(t *testing.T) {
 	err = wt.DeleteExisting(w2.WorkerPK)
 	assert(t, errors.Cause(err) == ErrWorkerNotExists, "should receive error indicating it doesn't exist anymore, got: %+v", err)
 }
+
+func TestWorkerQuery(t *testing.T) {
+	cfg, err := ConfFromEnv()
+	ok(t, err)
+	db := dynamodb.New(awssess(t, cfg))
+	wt := NewWorkerTable(db, cfg)
+
+	w1 := &Worker{WorkerPK{"p1", "w1"}, 1}
+	err = wt.Put(w1)
+	ok(t, err)
+	defer func() {
+		err = wt.Delete(w1.WorkerPK)
+		ok(t, err)
+	}()
+
+	w2 := &Worker{WorkerPK{"p1", "w2"}, 3}
+	err = wt.Put(w2)
+	ok(t, err)
+	defer func() {
+		err = wt.Delete(w2.WorkerPK)
+		ok(t, err)
+	}()
+
+	w3 := &Worker{WorkerPK{"p1", "w3"}, 10}
+	err = wt.Put(w3)
+	ok(t, err)
+	defer func() {
+		err = wt.Delete(w3.WorkerPK)
+		ok(t, err)
+	}()
+
+	t.Run("queries", func(t *testing.T) {
+		l1, err := wt.Query(PoolPK{"p1"})
+		ok(t, err)
+		assert(t, len(l1) == 3, "expected 3 workers, got: %+v", l1)
+		equals(t, w1.WorkerID, l1[0].WorkerID)
+		equals(t, w1.Capacity, l1[0].Capacity)
+	})
+}

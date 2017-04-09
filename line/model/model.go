@@ -12,6 +12,43 @@ import (
 //DB is our local alias for the dynamo interface
 type DB dynamodbiface.DynamoDBAPI
 
+// query reads a list of items from dynamodb
+func query(db DB, tname, idxname string, next func() interface{}, proj *Exp, filt *Exp, kcond *Exp) (err error) {
+
+	inp := &dynamodb.QueryInput{
+		//@TODO how to handle different indexes with different projections
+		TableName: aws.String(tname),
+	}
+
+	if kcond == nil {
+		return errors.Errorf("must provide a key condition expression")
+	}
+
+	inp.KeyConditionExpression, inp.ExpressionAttributeNames, inp.ExpressionAttributeValues, err = kcond.Get()
+	if err != nil {
+		return errors.Wrap(err, "error in key condition expression")
+	}
+
+	//@TODO handle projection expr
+	//@TODO handle filter expr
+
+	var out *dynamodb.QueryOutput
+	if out, err = db.Query(inp); err != nil {
+		return errors.Wrap(err, "failed to query")
+	}
+
+	//@TODO how to handle pagination and limits
+	for _, item := range out.Items {
+		next := next()
+		err := dynamodbattribute.UnmarshalMap(item, next)
+		if err != nil {
+			return errors.Wrap(err, "failed to unmarshal item")
+		}
+	}
+
+	return nil
+}
+
 // delete an item from the table by primary key
 func delete(db DB, tname string, pk interface{}, cond *Exp, condErr error) (err error) {
 	ipk, err := dynamodbattribute.MarshalMap(pk)
