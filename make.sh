@@ -19,7 +19,7 @@ function run_work { #test our worker logic
 function run_test { #test our scheduling reactor
 	echo "--> testing..."
 	export TEST_ENDPOINT=$(terraform output endpoint)
-	export $(terraform output env | tr -d ' '); go test ./line/actor -coverprofile=actors.coverage -v
+	export $(terraform output env | tr -d ' '); go test ./line/model -coverprofile=actors.coverage -v
 }
 
 function run_install { #install go dependencies
