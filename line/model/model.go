@@ -13,14 +13,17 @@ import (
 type DB dynamodbiface.DynamoDBAPI
 
 // query reads a list of items from dynamodb
-func query(db DB, tname, idxname string, next func() interface{}, proj *Exp, filt *Exp, kcond *Exp, maxPages int) (err error) {
+func query(db DB, tname, iname string, next func() interface{}, proj *Exp, filt *Exp, kcond *Exp, limit int64, maxPages int) (err error) {
 	if maxPages == 0 {
 		maxPages = 1
 	}
 
 	inp := &dynamodb.QueryInput{
-		//@TODO how to handle different indexes with different projections
 		TableName: aws.String(tname),
+	}
+
+	if iname != "" {
+		inp.SetIndexName(iname)
 	}
 
 	if kcond == nil {
@@ -46,13 +49,15 @@ func query(db DB, tname, idxname string, next func() interface{}, proj *Exp, fil
 		}
 	}
 
-	//@TODO add limit config so pagination makes sense
+	if limit != 0 {
+		inp.SetLimit(limit)
+	}
+
 	pageNum := 0
 	var lastErr error
 	if err = db.QueryPages(inp,
 		func(out *dynamodb.QueryOutput, lastPage bool) bool {
 			pageNum++
-
 			for _, item := range out.Items {
 				next := next()
 				err := dynamodbattribute.UnmarshalMap(item, next)
@@ -62,7 +67,7 @@ func query(db DB, tname, idxname string, next func() interface{}, proj *Exp, fil
 				}
 			}
 
-			return pageNum <= maxPages
+			return pageNum < maxPages
 		}); err != nil {
 		return errors.Wrap(err, "failed to query")
 	}

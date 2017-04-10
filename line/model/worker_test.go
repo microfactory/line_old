@@ -101,26 +101,31 @@ func TestWorkerQuery(t *testing.T) {
 	}()
 
 	t.Run("basic query", func(t *testing.T) {
-		l1, err := wt.Query(PoolPK{"p1"})
+		list, err := wt.Query(PoolPK{"p1"})
 		ok(t, err)
-		assert(t, len(l1) == 3, "expected 3 workers, got: %+v", l1)
-		equals(t, w1.WorkerID, l1[0].WorkerID)
-		equals(t, w1.Capacity, l1[0].Capacity)
+		assert(t, len(list) == 3, "expected 3 workers, got: %+v", list)
+		equals(t, w1.WorkerID, list[0].WorkerID)
+		equals(t, w1.Capacity, list[0].Capacity)
 	})
 
 	t.Run("projection query", func(t *testing.T) {
-		l1, err := wt.QueryMin(PoolPK{"p1"})
+		list, err := wt.QueryMin(PoolPK{"p1"})
 		ok(t, err)
-		assert(t, len(l1) == 3, "expected 3 workers, got: %+v", l1)
-		equals(t, w1.WorkerID, l1[0].WorkerID)
-		equals(t, int64(0), l1[0].Capacity)
+		assert(t, len(list) == 3, "expected 3 workers, got: %+v", list)
+		equals(t, w1.WorkerID, list[0].WorkerID)
+		equals(t, int64(0), list[0].Capacity)
 	})
 
 	t.Run("filter query", func(t *testing.T) {
-		l1, err := wt.QueryOneCap(PoolPK{"p1"})
+		list, err := wt.QueryOneCap(PoolPK{"p1"})
 		ok(t, err)
-		assert(t, len(l1) == 2, "expected 2 workers, got: %+v", l1)
-		// equals(t, w1.WorkerID, l1[0].WorkerID)
-		// equals(t, int64(0), l1[0].Capacity)
+		assert(t, len(list) == 2, "expected 2 workers, got: %+v", list)
+		equals(t, w2.WorkerID, list[0].WorkerID)
+	})
+
+	t.Run("one page query", func(t *testing.T) {
+		list, err := wt.QueryOnePage(PoolPK{"p1"})
+		ok(t, err)
+		assert(t, len(list) == 2, "expected 2 workers, got: %+v", list)
 	})
 }

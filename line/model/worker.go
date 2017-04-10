@@ -39,7 +39,7 @@ func (t *WorkerTable) Query(pool PoolPK) (i []*Worker, err error) {
 		w := &Worker{}
 		i = append(i, w)
 		return w
-	}, nil, nil, NewExp("#pool = :poolID").Name("#pool", "pool").Value(":poolID", pool.PoolID), 0)
+	}, nil, nil, NewExp("#pool = :poolID").Name("#pool", "pool").Value(":poolID", pool.PoolID), 0, 0)
 }
 
 //QueryOneCap all but filter for cap = one
@@ -48,7 +48,7 @@ func (t *WorkerTable) QueryOneCap(pool PoolPK) (i []*Worker, err error) {
 		w := &Worker{}
 		i = append(i, w)
 		return w
-	}, nil, NewExp("cap > :minCap").Value(":minCap", 1), NewExp("#pool = :poolID").Name("#pool", "pool").Value(":poolID", pool.PoolID), 0)
+	}, nil, NewExp("cap > :minCap").Value(":minCap", 1), NewExp("#pool = :poolID").Name("#pool", "pool").Value(":poolID", pool.PoolID), 0, 0)
 }
 
 //QueryMin queries all workers with minimal projection
@@ -57,7 +57,16 @@ func (t *WorkerTable) QueryMin(pool PoolPK) (i []*Worker, err error) {
 		w := &Worker{}
 		i = append(i, w)
 		return w
-	}, NewExp("#pool, wrk").Name("#pool", "pool"), nil, NewExp("#pool = :poolID").Name("#pool", "pool").Value(":poolID", pool.PoolID), 0)
+	}, NewExp("#pool, wrk").Name("#pool", "pool"), nil, NewExp("#pool = :poolID").Name("#pool", "pool").Value(":poolID", pool.PoolID), 0, 0)
+}
+
+//QueryOnePage queries all workers with minimal projection
+func (t *WorkerTable) QueryOnePage(pool PoolPK) (i []*Worker, err error) {
+	return i, query(t.db, t.cfg.WorkersTableName, "", func() interface{} {
+		w := &Worker{}
+		i = append(i, w)
+		return w
+	}, nil, nil, NewExp("#pool = :poolID").Name("#pool", "pool").Value(":poolID", pool.PoolID), 2, 1)
 }
 
 //Get a worker from the base table
