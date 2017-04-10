@@ -62,16 +62,12 @@ func (e *Exp) Get() (*string, map[string]*string, map[string]*dynamodb.Attribute
 
 //GetMerged returns a dynamo instruction after merging in existing vals and keys
 func (e *Exp) GetMerged(names map[string]*string, vals map[string]*dynamodb.AttributeValue) (*string, map[string]*string, map[string]*dynamodb.AttributeValue, error) {
-	if names != nil {
-		for ph, name := range names {
-			e.names[ph] = name
-		}
+	for ph, name := range names {
+		e.names[ph] = name
 	}
 
-	if vals != nil {
-		for ph, val := range vals {
-			e.values[ph] = val
-		}
+	for ph, val := range vals {
+		e.values[ph] = val
 	}
 
 	return e.Get()

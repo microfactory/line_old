@@ -42,6 +42,24 @@ func (t *WorkerTable) Query(pool PoolPK) (i []*Worker, err error) {
 	}, nil, nil, NewExp("#pool = :poolID").Name("#pool", "pool").Value(":poolID", pool.PoolID))
 }
 
+//QueryOneCap all but filter for cap = one
+func (t *WorkerTable) QueryOneCap(pool PoolPK) (i []*Worker, err error) {
+	return i, query(t.db, t.cfg.WorkersTableName, "", func() interface{} {
+		w := &Worker{}
+		i = append(i, w)
+		return w
+	}, nil, NewExp("cap > :minCap").Value(":minCap", 1), NewExp("#pool = :poolID").Name("#pool", "pool").Value(":poolID", pool.PoolID))
+}
+
+//QueryMin queries all workers with minimal projection
+func (t *WorkerTable) QueryMin(pool PoolPK) (i []*Worker, err error) {
+	return i, query(t.db, t.cfg.WorkersTableName, "", func() interface{} {
+		w := &Worker{}
+		i = append(i, w)
+		return w
+	}, NewExp("#pool, wrk").Name("#pool", "pool"), nil, NewExp("#pool = :poolID").Name("#pool", "pool").Value(":poolID", pool.PoolID))
+}
+
 //Get a worker from the base table
 func (t *WorkerTable) Get(pk WorkerPK) (i *Worker, err error) {
 	i = &Worker{}

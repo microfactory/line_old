@@ -29,8 +29,19 @@ func query(db DB, tname, idxname string, next func() interface{}, proj *Exp, fil
 		return errors.Wrap(err, "error in key condition expression")
 	}
 
-	//@TODO handle projection expr
-	//@TODO handle filter expr
+	if proj != nil {
+		inp.ProjectionExpression, inp.ExpressionAttributeNames, inp.ExpressionAttributeValues, err = proj.GetMerged(inp.ExpressionAttributeNames, inp.ExpressionAttributeValues)
+		if err != nil {
+			return errors.Wrap(err, "error in projection expression")
+		}
+	}
+
+	if filt != nil {
+		inp.FilterExpression, inp.ExpressionAttributeNames, inp.ExpressionAttributeValues, err = filt.GetMerged(inp.ExpressionAttributeNames, inp.ExpressionAttributeValues)
+		if err != nil {
+			return errors.Wrap(err, "error in filter expression")
+		}
+	}
 
 	var out *dynamodb.QueryOutput
 	if out, err = db.Query(inp); err != nil {
