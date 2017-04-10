@@ -13,7 +13,10 @@ import (
 type DB dynamodbiface.DynamoDBAPI
 
 // query reads a list of items from dynamodb
-func query(db DB, tname, idxname string, next func() interface{}, proj *Exp, filt *Exp, kcond *Exp) (err error) {
+func query(db DB, tname, idxname string, next func() interface{}, proj *Exp, filt *Exp, kcond *Exp, maxPages int) (err error) {
+	if maxPages == 0 {
+		maxPages = 1
+	}
 
 	inp := &dynamodb.QueryInput{
 		//@TODO how to handle different indexes with different projections
@@ -43,18 +46,29 @@ func query(db DB, tname, idxname string, next func() interface{}, proj *Exp, fil
 		}
 	}
 
-	var out *dynamodb.QueryOutput
-	if out, err = db.Query(inp); err != nil {
+	//@TODO add limit config so pagination makes sense
+	pageNum := 0
+	var lastErr error
+	if err = db.QueryPages(inp,
+		func(out *dynamodb.QueryOutput, lastPage bool) bool {
+			pageNum++
+
+			for _, item := range out.Items {
+				next := next()
+				err := dynamodbattribute.UnmarshalMap(item, next)
+				if err != nil {
+					lastErr = errors.Wrap(err, "failed to unmarshal item")
+					return false
+				}
+			}
+
+			return pageNum <= maxPages
+		}); err != nil {
 		return errors.Wrap(err, "failed to query")
 	}
 
-	//@TODO how to handle pagination and limits
-	for _, item := range out.Items {
-		next := next()
-		err := dynamodbattribute.UnmarshalMap(item, next)
-		if err != nil {
-			return errors.Wrap(err, "failed to unmarshal item")
-		}
+	if lastErr != nil {
+		return lastErr
 	}
 
 	return nil
